@@ -10,7 +10,7 @@ init_db()
 st.set_page_config(page_title="Gestão Cestas Bom Dia - Boa Vista/RR", page_icon="🛒", layout="wide")
 
 st.title("🛒 Cestas Bom Dia - Sistema de Cotação, Precificação e Vendas")
-st.markdown("Gestão de fornecedores, frete por zonas, comissões, cotações com histórico por data, pedidos e estoque em Boa Vista/RR.")
+st.markdown("Gestão de marcas, fornecedores, frete por zonas, comissões, cotações por data, pedidos e estoque em Boa Vista/RR.")
 
 TAXAS_CANAL = {
     "Online - Instagram": 0.0,
@@ -28,7 +28,7 @@ menu = st.sidebar.radio("Ir para:", [
     "📊 Cotações, Histórico por Data & Precificação", 
     "🛒 Registro de Pedidos / Vendas",
     "📁 Importar Planilhas (Excel / CSV)",
-    "📦 Cadastrar Produtos & Substitutos", 
+    "📦 Cadastrar Produtos & Marcas", 
     "🏭 Fornecedores & Preços", 
     "📋 Composição de Cestas & Kits"
 ])
@@ -110,10 +110,10 @@ if menu == "📈 Dashboard & Projeções":
 # ==========================================
 elif menu == "📦 Gestão & Alerta de Estoque":
     st.header("📦 Controle de Estoque & Alerta de Ruptura de Insumos")
-    st.markdown("Monitore a quantidade disponível de cada insumo no estoque de Boa Vista e evite a falta de produtos nas cestas.")
+    st.markdown("Monitore a quantidade disponível de cada insumo e marca no estoque de Boa Vista.")
     
     conn = get_connection()
-    df_estoque = pd.read_sql_query("SELECT id, nome, grupo_equivalencia, unidade, estoque_atual, estoque_minimo FROM produtos", conn)
+    df_estoque = pd.read_sql_query("SELECT id, nome, marca, grupo_equivalencia, unidade, estoque_atual, estoque_minimo FROM produtos", conn)
     conn.close()
     
     if df_estoque.empty:
@@ -126,14 +126,14 @@ elif menu == "📦 Gestão & Alerta de Estoque":
             st.dataframe(df_criticos.style.format({'estoque_atual': '{:.1f}', 'estoque_minimo': '{:.1f}'}), use_container_width=True)
             st.markdown("---")
             
-        st.subheader("📋 Tabela Geral de Estoque de Insumos")
+        st.subheader("📋 Tabela Geral de Estoque de Insumos e Marcas")
         st.dataframe(df_estoque.style.format({'estoque_atual': '{:.1f}', 'estoque_minimo': '{:.1f}'}), use_container_width=True)
         
         st.markdown("---")
         st.subheader("🔄 Entrada / Atualização de Estoque")
         with st.form("form_atualiza_estoque"):
-            p_sel = st.selectbox("Selecione o Produto", df_estoque['nome'])
-            p_id_est = int(df_estoque[df_estoque['nome'] == p_sel]['id'].values[0])
+            p_sel = st.selectbox("Selecione o Produto", df_estoque['nome'] + " (" + df_estoque['marca'] + ")")
+            p_id_est = int(df_estoque.iloc[st.session_state.get('p_index', 0)]['id']) if 'p_index' in st.session_state else int(df_estoque['id'].values[0])
             qtd_adicionar = st.number_input("Adicionar ao Estoque (Un/Kg/Pct)", value=50.0, step=5.0)
             btn_est = st.form_submit_button("Atualizar Estoque")
             
@@ -143,7 +143,7 @@ elif menu == "📦 Gestão & Alerta de Estoque":
                 cursor.execute("UPDATE produtos SET estoque_atual = estoque_atual + ? WHERE id = ?", (qtd_adicionar, p_id_est))
                 conn.commit()
                 conn.close()
-                st.success(f"Estoque do item '{p_sel}' atualizado com sucesso!")
+                st.success("Estoque atualizado com sucesso!")
                 st.rerun()
 
 # ==========================================
@@ -194,7 +194,7 @@ elif menu == "📊 Cotações, Histórico por Data & Precificação":
                 st.markdown("---")
                 st.markdown("### Detalhes dos Menores Preços Encontrados por Grupo")
                 tabela_exibicao = df_itens[['produto', 'grupo_equivalencia', 'quantidade', 'unidade', 'menor_preco', 'fornecedor', 'subtotal']].copy()
-                tabela_exibicao.columns = ['Produto', 'Grupo / Categoria', 'Qtd', 'Un', 'Menor Preço Un.', 'Atacadista Vencedor', 'Subtotal']
+                tabela_exibicao.columns = ['Produto / Marca', 'Grupo / Categoria', 'Qtd', 'Un', 'Menor Preço Un.', 'Atacadista Vencedor', 'Subtotal']
                 st.dataframe(tabela_exibicao.style.format({
                     'Menor Preço Un.': 'R$ {:.2f}',
                     'Subtotal': 'R$ {:.2f}',
@@ -203,11 +203,9 @@ elif menu == "📊 Cotações, Histórico por Data & Precificação":
 
     with tab_p2:
         st.subheader("📈 Evolução Cronológica e Variação de Preços por Atacadista")
-        st.markdown("Acompanhe como o preço de cada produto oscilou ao longo das diferentes datas de registro e cotação.")
-        
         conn = get_connection()
         df_hist = pd.read_sql_query('''
-            SELECT c.data_cotacao, p.nome AS produto, f.nome AS atacadista, c.preco
+            SELECT c.data_cotacao, (p.nome || ' - ' || p.marca) AS produto_marca, f.nome AS atacadista, c.preco
             FROM cotacoes c
             JOIN produtos p ON c.produto_id = p.id
             JOIN fornecedores f ON c.fornecedor_id = f.id
@@ -218,25 +216,19 @@ elif menu == "📊 Cotações, Histórico por Data & Precificação":
         if df_hist.empty:
             st.info("Nenhuma cotação com data registrada encontrada.")
         else:
-            prod_filtro = st.selectbox("Selecione o produto para análise temporal:", df_hist['produto'].unique())
-            df_prod_hist = df_hist[df_hist['produto'] == prod_filtro]
+            prod_filtro = st.selectbox("Selecione o produto/marca para análise temporal:", df_hist['produto_marca'].unique())
+            df_prod_hist = df_hist[df_hist['produto_marca'] == prod_filtro]
             
-            # Gráfico de Linhas Temporal por Atacadista
             fig_hist = px.line(df_prod_hist, x='data_cotacao', y='preco', color='atacadista', markers=True,
                                title=f"Histórico de Preços por Data - {prod_filtro} (R$)",
                                labels={'data_cotacao':'Data da Cotação', 'preco':'Preço Unitário (R$)', 'atacadista':'Atacadista'})
             st.plotly_chart(fig_hist, use_container_width=True)
-            
-            st.markdown("---")
-            st.subheader("📋 Tabela Detalhada de Cotações com Datas")
-            st.dataframe(df_prod_hist.sort_values(by='data_cotacao', ascending=False).style.format({'preco': 'R$ {:.2f}'}), use_container_width=True)
 
 # ==========================================
 # ABA 3: REGISTRO DE PEDIDOS / VENDAS
 # ==========================================
 elif menu == "🛒 Registro de Pedidos / Vendas":
     st.header("🛒 Registro de Pedidos & Baixa de Estoque")
-    st.markdown("Registre novos pedidos especificando a **Zona de Boa Vista**, o **Vendedor** e o **Canal de Venda**.")
     
     conn = get_connection()
     tipos_cesta = pd.read_sql_query("SELECT id, nome FROM tipos_cesta", conn)
@@ -296,41 +288,13 @@ elif menu == "🛒 Registro de Pedidos / Vendas":
                 conn.close()
                 st.success(f"Pedido de {qtd_vendida}x '{cesta_venda}' registrado! Estoque atualizado automaticamente.")
                 st.rerun()
-                
-        st.markdown("---")
-        st.subheader("📊 Histórico de Pedidos e Vendas Realizadas")
-        conn = get_connection()
-        df_vendas = pd.read_sql_query('''
-            SELECT 
-                v.id, 
-                v.data_venda,
-                t.nome AS cesta, 
-                v.quantidade_vendida, 
-                v.preco_unitario_praticado, 
-                (v.quantidade_vendida * v.preco_unitario_praticado) AS faturamento_total,
-                v.vendedor,
-                v.canal_venda, 
-                v.zona_entrega
-            FROM vendas v
-            JOIN tipos_cesta t ON v.tipo_cesta_id = t.id
-            ORDER BY v.data_venda DESC
-        ''', conn)
-        conn.close()
-        
-        if df_vendas.empty:
-            st.info("Nenhum pedido ou venda registrado até o momento.")
-        else:
-            st.dataframe(df_vendas.style.format({
-                'preco_unitario_praticado': 'R$ {:.2f}',
-                'faturamento_total': 'R$ {:.2f}'
-            }), use_container_width=True)
 
 # ==========================================
 # ABA 4: IMPORTAR PLANILHAS (EXCEL / CSV)
 # ==========================================
 elif menu == "📁 Importar Planilhas (Excel / CSV)":
     st.header("📁 Importação de Cotações via Excel / Google Sheets")
-    st.markdown("Faça o upload do arquivo .xlsx preenchido para atualizar os preços dos atacadistas no sistema com a **data atual do registro**.")
+    st.markdown("Faça o upload do arquivo .xlsx com marcas e atacadistas preenchidos.")
     
     file_upload = st.file_uploader("Selecione o arquivo Excel de Cotação", type=["xlsx", "xls", "csv"])
     
@@ -352,22 +316,23 @@ elif menu == "📁 Importar Planilhas (Excel / CSV)":
                 
                 count_cot = 0
                 data_str = data_cotacao_input.strftime("%Y-%m-%d")
-                cols_fornec = [c for c in df_upload.columns if c not in ["ID Produto", "Produto / Item", "Unidade", "Grupo / Categoria"]]
+                cols_fornec = [c for c in df_upload.columns if c not in ["ID Produto", "Produto / Item", "Marca", "Unidade", "Grupo / Categoria"]]
                 
                 for index, row in df_upload.iterrows():
                     prod_nome = row.get("Produto / Item")
+                    marca_val = row.get("Marca", "Geral")
                     grupo = row.get("Grupo / Categoria")
                     unidade = row.get("Unidade", "UN")
                     
                     if pd.isna(prod_nome) or pd.isna(grupo):
                         continue
                         
-                    cursor.execute("SELECT id FROM produtos WHERE nome = ?", (prod_nome,))
+                    cursor.execute("SELECT id FROM produtos WHERE nome = ? AND marca = ?", (prod_nome, marca_val))
                     res_prod = cursor.fetchone()
                     if res_prod:
                         prod_id = res_prod[0]
                     else:
-                        cursor.execute("INSERT INTO produtos (nome, unidade, grupo_equivalencia) VALUES (?, ?, ?)", (prod_nome, unidade, grupo))
+                        cursor.execute("INSERT INTO produtos (nome, marca, unidade, grupo_equivalencia) VALUES (?, ?, ?, ?)", (prod_nome, marca_val, unidade, grupo))
                         prod_id = cursor.lastrowid
                         
                     for f_nome in cols_fornec:
@@ -381,7 +346,7 @@ elif menu == "📁 Importar Planilhas (Excel / CSV)":
                                     f_id = res_f[0]
                                 else:
                                     cursor.execute("INSERT INTO fornecedores (nome, telefone) VALUES (?, ?)", (f_nome, "Atacado"))
-                                    f_id = lastrowid if 'lastrowid' in locals() else cursor.lastrowid
+                                    f_id = cursor.lastrowid
                                     
                                 cursor.execute("INSERT INTO cotacoes (produto_id, fornecedor_id, preco, data_cotacao) VALUES (?, ?, ?, ?)",
                                                (prod_id, f_id, preco_float, data_str))
@@ -391,42 +356,46 @@ elif menu == "📁 Importar Planilhas (Excel / CSV)":
                                 
                 conn.commit()
                 conn.close()
-                st.success(f"Sucesso! {count_cot} cotações registradas com a data {data_str}!")
+                st.success(f"Sucesso! {count_cot} cotações registradas com sucesso!")
                 st.rerun()
         except Exception as e:
             st.error(f"Erro ao ler o arquivo: {e}")
 
 # ==========================================
-# ABA 5: CADASTRAR PRODUTOS E SUBSTITUTOS
+# ABA 5: CADASTRAR PRODUTOS E MARCAS
 # ==========================================
-elif menu == "📦 Cadastrar Produtos & Substitutos":
-    st.header("📦 Cadastro de Produtos e Grupos de Substituição")
+elif menu == "📦 Cadastrar Produtos & Marcas":
+    st.header("📦 Cadastro de Produtos, Marcas e Grupos de Substituição")
     
     with st.form("form_produto"):
-        nome_prod = st.text_input("Nome do Produto (Ex: Arroz Camil 5kg, Sabonete Lux 85g)")
-        unidade = st.selectbox("Unidade de Medida", ["UN", "PCT", "KG", "L", "CX"])
-        grupo_eq = st.text_input("Grupo de Equivalência (Ex: Arroz 5kg, Feijão 1kg, Sabonete)")
-        est_inicial = st.number_input("Estoque Inicial", min_value=0.0, value=50.0, step=5.0)
-        est_minimo = st.number_input("Estoque Mínimo de Reposição", min_value=0.0, value=10.0, step=5.0)
-        
-        submitted = st.form_submit_button("Cadastrar Produto")
+        col_p1, col_p2 = st.columns(2)
+        with col_p1:
+            nome_prod = st.text_input("Nome do Produto (Ex: Arroz 5kg, Sabonete 85g, Óleo de Soja)")
+            marca_prod = st.text_input("Marca do Produto (Ex: Camil, Lux, Liza, Tio João)")
+            unidade = st.selectbox("Unidade de Medida", ["UN", "PCT", "KG", "L", "CX"])
+        with col_p2:
+            grupo_eq = st.text_input("Grupo de Equivalência (Ex: Arroz 5kg, Feijão 1kg, Sabonete)")
+            est_inicial = st.number_input("Estoque Inicial", min_value=0.0, value=50.0, step=5.0)
+            est_minimo = st.number_input("Estoque Mínimo de Reposição", min_value=0.0, value=10.0, step=5.0)
+            
+        submitted = st.form_submit_button("Cadastrar Produto com Marca")
         if submitted:
-            if nome_prod and grupo_eq:
+            if nome_prod and grupo_eq and marca_prod:
                 conn = get_connection()
                 cursor = conn.cursor()
-                cursor.execute("INSERT INTO produtos (nome, unidade, grupo_equivalencia, estoque_atual, estoque_minimo) VALUES (?, ?, ?, ?, ?)", 
-                               (nome_prod, unidade, grupo_eq, est_inicial, est_minimo))
+                cursor.execute("INSERT INTO produtos (nome, marca, unidade, grupo_equivalencia, estoque_atual, estoque_minimo) VALUES (?, ?, ?, ?, ?, ?)", 
+                               (nome_prod, marca_prod, unidade, grupo_eq, est_inicial, est_minimo))
                 conn.commit()
                 conn.close()
-                st.success(f"Produto '{nome_prod}' cadastrado com sucesso!")
+                st.success(f"Produto '{nome_prod}' (Marca: {marca_prod}) cadastrado com sucesso!")
                 st.rerun()
             else:
-                st.error("Preencha todos os campos obrigatórios.")
+                st.error("Preencha todos os campos obrigatórios (incluindo a Marca).")
                 
     st.markdown("---")
-    st.subheader("Produtos Cadastrados")
+    st.subheader("Produtos e Marcas Cadastrados")
     conn = get_connection()
-    df_prods = pd.read_sql_query("SELECT id, nome, unidade, grupo_equivalencia, estoque_atual, estoque_minimo FROM produtos", conn)
+    df_prods = pd.read_sql_query("SELECT id, nome, marca, unidade, grupo_equivalencia, estoque_atual, estoque_minimo FROM produtos", conn)
     conn.close()
     st.dataframe(df_prods, use_container_width=True)
 
@@ -490,7 +459,7 @@ elif menu == "🏭 Fornecedores & Preços":
 
     with tab3:
         conn = get_connection()
-        prods = pd.read_sql_query("SELECT id, nome, grupo_equivalencia FROM produtos", conn)
+        prods = pd.read_sql_query("SELECT id, (nome || ' - Marca: ' || marca) AS item_desc FROM produtos", conn)
         fornecs = pd.read_sql_query("SELECT id, nome FROM fornecedores", conn)
         conn.close()
         
@@ -498,7 +467,7 @@ elif menu == "🏭 Fornecedores & Preços":
             st.warning("Cadastre produtos e fornecedores antes de inserir cotações.")
         else:
             with st.form("form_cotacao"):
-                p_id = st.selectbox("Produto", prods['id'], format_func=lambda x: prods[prods['id'] == x]['nome'].values[0])
+                p_id = st.selectbox("Produto / Marca", prods['id'], format_func=lambda x: prods[prods['id'] == x]['item_desc'].values[0])
                 f_id = st.selectbox("Atacadista / Fornecedor", fornecs['id'], format_func=lambda x: fornecs[fornecs['id'] == x]['nome'].values[0])
                 preco = st.number_input("Preço Unitário Ofertado (R$)", min_value=0.01, step=0.10)
                 data_cot = st.date_input("Data da Cotação", value=datetime.now())
@@ -519,7 +488,7 @@ elif menu == "🏭 Fornecedores & Preços":
             st.subheader("Cotações Recentes")
             conn = get_connection()
             df_cot = pd.read_sql_query('''
-                SELECT c.id, p.nome AS produto, f.nome AS atacadista, c.preco, c.data_cotacao
+                SELECT c.id, (p.nome || ' - ' || p.marca) AS produto_marca, f.nome AS atacadista, c.preco, c.data_cotacao
                 FROM cotacoes c
                 JOIN produtos p ON c.produto_id = p.id
                 JOIN fornecedores f ON c.fornecedor_id = f.id
@@ -564,7 +533,7 @@ elif menu == "📋 Composição de Cestas & Kits":
     with tab_c2:
         conn = get_connection()
         tipos = pd.read_sql_query("SELECT id, nome FROM tipos_cesta", conn)
-        produtos_list = pd.read_sql_query("SELECT id, nome, unidade FROM produtos", conn)
+        produtos_list = pd.read_sql_query("SELECT id, (nome || ' - Marca: ' || marca) AS item_desc, unidade FROM produtos", conn)
         conn.close()
         
         if tipos.empty or produtos_list.empty:
@@ -572,7 +541,7 @@ elif menu == "📋 Composição de Cestas & Kits":
         else:
             with st.form("form_comp"):
                 t_id = st.selectbox("Cesta / Kit Alvo", tipos['id'], format_func=lambda x: tipos[tipos['id'] == x]['nome'].values[0])
-                prod_id = st.selectbox("Produto a Incluir", produtos_list['id'], format_func=lambda x: produtos_list[produtos_list['id'] == x]['nome'].values[0])
+                prod_id = st.selectbox("Produto a Incluir", produtos_list['id'], format_func=lambda x: produtos_list[produtos_list['id'] == x]['item_desc'].values[0])
                 qtd = st.number_input("Quantidade na Cesta", min_value=0.1, value=1.0, step=0.1)
                 
                 if st.form_submit_button("Vincular Produto"):
@@ -591,7 +560,7 @@ elif menu == "📋 Composição de Cestas & Kits":
             
             conn = get_connection()
             df_comp = pd.read_sql_query('''
-                SELECT cc.id, p.nome AS produto, p.unidade, cc.quantidade, p.grupo_equivalencia
+                SELECT cc.id, p.nome AS produto, p.marca, p.unidade, cc.quantidade, p.grupo_equivalencia
                 FROM composicao_cesta cc
                 JOIN produtos p ON cc.produto_id = p.id
                 WHERE cc.tipo_cesta_id = ?
