@@ -2,39 +2,58 @@
 import pandas as pd
 from datetime import datetime
 from core.database import init_db, get_connection
-import os
 import io
 
 init_db()
 st.set_page_config(page_title="Cestas Bom Dia - Boa Vista", page_icon="🛒", layout="wide")
-st.title("🛒 Cestas BomDia - Gestão Operacional & Lotes")
+st.title("🛒 Cestas Bom Dia - Gestão Operacional & Lotes")
 
-# Função auxiliar para garantir que a planilha modelo oficial exista sempre na raiz
-def garantir_planilha_modelo():
-    nome_arquivo = "Cestas_Bom_Dia_Template_Upload.xlsx"
-    if not os.path.exists(nome_arquivo):
-        dados_modelo = [
-            {"Nome do Produto": "ARROZ 1KG", "Unidade": "KG", "Marca": "PRATO CHIC", "Preço Assaí": 3.39, "Preço Atacadão": 4.49},
-            {"Nome do Produto": "FEIJÃO 1KG", "Unidade": "KG", "Marca": "KICALDO", "Preço Assaí": 5.62, "Preço Atacadão": 5.69},
-            {"Nome do Produto": "AÇUCAR 1KG", "Unidade": "KG", "Marca": "CRISTAL SONORA", "Preço Assaí": 2.79, "Preço Atacadão": 3.35},
-            {"Nome do Produto": "FARINHA", "Unidade": "UN", "Marca": "GERAL", "Preço Assaí": None, "Preço Atacadão": 4.29},
-            {"Nome do Produto": "TRIGO 1KG", "Unidade": "KG", "Marca": "TRIGOLAR", "Preço Assaí": 4.70, "Preço Atacadão": 4.69},
-            {"Nome do Produto": "OLEO 900ML", "Unidade": "FR", "Marca": "SERRA VERDE", "Preço Assaí": 7.49, "Preço Atacadão": 6.95},
-            {"Nome do Produto": "SAL 1KG", "Unidade": "KG", "Marca": "FELICIA", "Preço Assaí": 2.25, "Preço Atacadão": 1.79},
-            {"Nome do Produto": "MACARRÃO ESPAG. 400G", "Unidade": "PC", "Marca": "BOM SABOR", "Preço Assaí": 1.89, "Preço Atacadão": 2.09},
-            {"Nome do Produto": "MOLHO TOMATE SC300G", "Unidade": "SC/G", "Marca": "BONARE", "Preço Assaí": 1.59, "Preço Atacadão": 1.59},
-            {"Nome do Produto": "VINAGRE 500ML", "Unidade": "FR", "Marca": "VIRROSAS", "Preço Assaí": 3.19, "Preço Atacadão": 2.59},
-            {"Nome do Produto": "CAFE 250GR", "Unidade": "PC", "Marca": "PILÃO", "Preço Assaí": 8.09, "Preço Atacadão": 9.99},
-            {"Nome do Produto": "SARDINHA 125G", "Unidade": "LT", "Marca": "PALMEIRA", "Preço Assaí": 4.89, "Preço Atacadão": 5.59},
-            {"Nome do Produto": "BOLACHA DOCE RECHEADA 80G", "Unidade": "PC", "Marca": "TRIGOLINO", "Preço Assaí": 1.69, "Preço Atacadão": 1.39},
-            {"Nome do Produto": "BISCOITO SALGADO CREMCKER 300G", "Unidade": "PC", "Marca": "RACHEIRO", "Preço Assaí": 2.99, "Preço Atacadão": 3.99},
-            {"Nome do Produto": "COMPOSTO LACTEO 400G", "Unidade": "PC", "Marca": "PURIBON", "Preço Assaí": 8.39, "Preço Atacadão": 11.89},
-            {"Nome do Produto": "MIOJO 74G DVS SABOR", "Unidade": "UND", "Marca": "NOSSO SABOR LAMEN", "Preço Assaí": 1.23, "Preço Atacadão": 1.49}
-        ]
-        df_m = pd.DataFrame(dados_modelo)
-        df_m.to_excel(nome_arquivo, index=False)
-
-garantir_planilha_modelo()
+# Dados padronizados oficiais com os 43 produtos e preços do Assaí e Atacadão
+dados_completos = [
+    {"Nome do Produto": "ARROZ 1KG", "Unidade": "KG", "Marca": "PRATO CHIC", "Preço Assaí": 3.39, "Preço Atacadão": 4.49},
+    {"Nome do Produto": "FEIJÃO 1KG", "Unidade": "KG", "Marca": "KICALDO", "Preço Assaí": 5.62, "Preço Atacadão": 5.69},
+    {"Nome do Produto": "AÇUCAR 1KG", "Unidade": "KG", "Marca": "CRISTAL SONORA", "Preço Assaí": 2.79, "Preço Atacadão": 3.35},
+    {"Nome do Produto": "FARINHA", "Unidade": "UN", "Marca": "MANDIOCA DONA", "Preço Assaí": None, "Preço Atacadão": 4.29},
+    {"Nome do Produto": "TRIGO 1KG", "Unidade": "KG", "Marca": "TRIGOLAR", "Preço Assaí": 4.70, "Preço Atacadão": 4.69},
+    {"Nome do Produto": "OLEO 900ML", "Unidade": "FR", "Marca": "SERRA VERDE", "Preço Assaí": 7.49, "Preço Atacadão": 6.95},
+    {"Nome do Produto": "SAL 1KG", "Unidade": "KG", "Marca": "FELICIA", "Preço Assaí": 2.25, "Preço Atacadão": 1.79},
+    {"Nome do Produto": "MACARRÃO ESPAG. 400G", "Unidade": "PC", "Marca": "BOM SABOR", "Preço Assaí": 1.89, "Preço Atacadão": 2.09},
+    {"Nome do Produto": "MOLHO TOMATE SC300G", "Unidade": "SC/G", "Marca": "BONARE", "Preço Assaí": 1.59, "Preço Atacadão": 1.59},
+    {"Nome do Produto": "VINAGRE 500ML", "Unidade": "FR", "Marca": "VIRROSAS", "Preço Assaí": 3.19, "Preço Atacadão": 2.59},
+    {"Nome do Produto": "CAFE 250GR", "Unidade": "PC", "Marca": "PILÃO", "Preço Assaí": 8.09, "Preço Atacadão": 9.99},
+    {"Nome do Produto": "SARDINHA 125G", "Unidade": "LT", "Marca": "PALMEIRA", "Preço Assaí": 4.89, "Preço Atacadão": 5.59},
+    {"Nome do Produto": "BOLACHA DOCE RECHEADA 80G", "Unidade": "PC", "Marca": "TRIGOLINO", "Preço Assaí": 1.69, "Preço Atacadão": 1.39},
+    {"Nome do Produto": "BISCOITO SALGADO CREMCKER 300G", "Unidade": "PC", "Marca": "RACHEIRO", "Preço Assaí": 2.99, "Preço Atacadão": 3.99},
+    {"Nome do Produto": "COMPOSTO LACTEO 400G", "Unidade": "PC", "Marca": "PURIBON", "Preço Assaí": 8.39, "Preço Atacadão": 11.89},
+    {"Nome do Produto": "MIOJO 74G DVS SABOR", "Unidade": "UND", "Marca": "NOSSO SABOR LAMEN", "Preço Assaí": 1.23, "Preço Atacadão": 1.49},
+    {"Nome do Produto": "FLOCÃO 500GR", "Unidade": "G", "Marca": "LIVRE FLOCOS", "Preço Assaí": 3.89, "Preço Atacadão": 3.89},
+    {"Nome do Produto": "SELETA LEGUMES 170G", "Unidade": "LT", "Marca": "PREDILECTA", "Preço Assaí": 2.79, "Preço Atacadão": 3.29},
+    {"Nome do Produto": "ACHOCOLATADO 200GR", "Unidade": "PC", "Marca": "APITI POWER", "Preço Assaí": 4.30, "Preço Atacadão": 4.65},
+    {"Nome do Produto": "BISCOITO ROSQUINHA DOCE 300G", "Unidade": "PC", "Marca": "TRIGOLINO", "Preço Assaí": 4.29, "Preço Atacadão": 3.69},
+    {"Nome do Produto": "MARGARINA 250G", "Unidade": "UND", "Marca": "PRIMOR", "Preço Assaí": 2.95, "Preço Atacadão": 3.29},
+    {"Nome do Produto": "MARGARINA 500G", "Unidade": "UND", "Marca": "PRIMOR", "Preço Assaí": 4.99, "Preço Atacadão": 6.00},
+    {"Nome do Produto": "PÃO FORMA 450G", "Unidade": "UND", "Marca": "PÃES DELÍCIA", "Preço Assaí": 6.99, "Preço Atacadão": 8.00},
+    {"Nome do Produto": "REFRESCO PÓ 8G", "Unidade": "UND", "Marca": "SUKKI", "Preço Assaí": None, "Preço Atacadão": 0.39},
+    {"Nome do Produto": "BANDEJA DE OVOS 30UND", "Unidade": "UND", "Marca": "GSL", "Preço Assaí": None, "Preço Atacadão": 11.59},
+    {"Nome do Produto": "PASTA DE DENTES 70GR", "Unidade": "UND", "Marca": "EVEN TRI PROT", "Preço Assaí": 2.09, "Preço Atacadão": 2.49},
+    {"Nome do Produto": "SABONETE 80GR", "Unidade": "UND", "Marca": "FRANCIS INTENSO", "Preço Assaí": 1.59, "Preço Atacadão": 1.99},
+    {"Nome do Produto": "PAPEL HIGIÊNICO 4UND.", "Unidade": "UND", "Marca": "FLORAL", "Preço Assaí": 3.99, "Preço Atacadão": 2.90},
+    {"Nome do Produto": "KIT SHAMPOO/CONDIC.", "Unidade": "UND", "Marca": "DABELLE", "Preço Assaí": 17.49, "Preço Atacadão": 15.91},
+    {"Nome do Produto": "ESCOVA DE DENTES", "Unidade": "UND", "Marca": "SORRISO", "Preço Assaí": 3.99, "Preço Atacadão": 2.79},
+    {"Nome do Produto": "FIO DENTAL", "Unidade": "UND", "Marca": "JADE PRO", "Preço Assaí": 8.95, "Preço Atacadão": 4.99},
+    {"Nome do Produto": "DESODORANTE NEUTRO", "Unidade": "UND", "Marca": "ABOVE CREME", "Preço Assaí": 3.39, "Preço Atacadão": None},
+    {"Nome do Produto": "PAPEL HIGIENICO COM 8UND", "Unidade": "UND", "Marca": "GIRASSOL 30M NEUTRO", "Preço Assaí": 6.29, "Preço Atacadão": 6.29},
+    {"Nome do Produto": "ÁGUA SANITÁRIA 1 LT", "Unidade": "UND", "Marca": "BRINORT", "Preço Assaí": 2.65, "Preço Atacadão": 2.29},
+    {"Nome do Produto": "DESINFETANTE 2LT", "Unidade": "UND", "Marca": "BRINORT EUCALIPTO", "Preço Assaí": 5.45, "Preço Atacadão": 5.29},
+    {"Nome do Produto": "SABÃO EM BARRA 450G / 180G", "Unidade": "UND", "Marca": "GUAMÁ", "Preço Assaí": 4.49, "Preço Atacadão": 2.35},
+    {"Nome do Produto": "SABÃO EM PÓ 400GR", "Unidade": "UND", "Marca": "LAV ROUPA PÓ SONHO", "Preço Assaí": 3.39, "Preço Atacadão": 1.80},
+    {"Nome do Produto": "AMACIANTE 2LT", "Unidade": "UND", "Marca": "AMAC HIPER PLUS", "Preço Assaí": 5.79, "Preço Atacadão": 5.39},
+    {"Nome do Produto": "MULTIÚSO 500ML", "Unidade": "UND", "Marca": "BRILUX MULTIUSO", "Preço Assaí": 3.99, "Preço Atacadão": 4.15},
+    {"Nome do Produto": "ESPONJA", "Unidade": "UND", "Marca": "ESFRELUX C/4", "Preço Assaí": 0.75, "Preço Atacadão": 0.55},
+    {"Nome do Produto": "PALHA DE AÇO", "Unidade": "UND", "Marca": "LUSTRO", "Preço Assaí": 1.55, "Preço Atacadão": 1.55},
+    {"Nome do Produto": "DETERGENTE 500ML", "Unidade": "UND", "Marca": "BRILUX", "Preço Assaí": 1.85, "Preço Atacadão": 2.05},
+    {"Nome do Produto": "DESINFETANTE 500ML", "Unidade": "UND", "Marca": "BRILUX EUCALIPTO", "Preço Assaí": 1.99, "Preço Atacadão": 2.79}
+]
 
 menu = st.sidebar.radio("Navegabilidade:", [
     "📥 Upload & Importação",
@@ -49,16 +68,19 @@ if menu == "📥 Upload & Importação":
     st.header("📥 Importação Automatizada via Planilha Oficial")
     st.markdown("Faça o upload da **Planilha Padrão Oficial** para atualizar produtos e cotações de forma limpa.")
     
-    try:
-        with open("Cestas_Bom_Dia_Template_Upload.xlsx", "rb") as f:
-            st.download_button(
-                label="⬇️ Baixar Planilha Modelo Padrão Oficial",
-                data=f,
-                file_name="Cestas_Bom_Dia_Template_Upload.xlsx",
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-            )
-    except Exception:
-        st.info("Clique abaixo para gerar a planilha modelo.")
+    # Gerador dinâmico de planilha em memória
+    output = io.BytesIO()
+    df_m = pd.DataFrame(dados_completos)
+    with pd.ExcelWriter(output, engine='openpyxl') as writer:
+        df_m.to_excel(writer, index=False, sheet_name='Cotações')
+    excel_bytes = output.getvalue()
+    
+    st.download_button(
+        label="⬇️ Baixar Planilha Modelo Padrão Oficial",
+        data=excel_bytes,
+        file_name="Cestas_Bom_Dia_Template_Upload.xlsx",
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    )
         
     st.markdown("---")
     uploaded_file = st.file_uploader("Carregar Planilha Oficial Preenchida (.xlsx)", type=["xlsx"])
@@ -81,15 +103,15 @@ if menu == "📥 Upload & Importação":
                 count_cots = 0
                 
                 for idx, row in df_up.iterrows():
-                    nome_prod = str(row.get("Nome do Produto", "")).strip()
-                    if not nome_prod or nome_prod.upper() in ["NAN", "NONE", "PRODUTO", "ITEM"]:
+                    nome_prod = str(row.iloc[0]).strip() if not pd.isna(row.iloc[0]) else ""
+                    if not nome_prod or nome_prod.upper() in ["NAN", "NONE", "PRODUTO", "ITEM", "NOME DO PRODUTO"]:
                         continue
                         
-                    unidade = str(row.get("Unidade", "UN")).strip().upper()
+                    unidade = str(row.iloc[1]).strip().upper() if len(row) > 1 and not pd.isna(row.iloc[1]) else "UN"
                     if not unidade or unidade in ["NAN", "NONE"]:
                         unidade = "UN"
                         
-                    marca = str(row.get("Marca", "Geral")).strip().upper()
+                    marca = str(row.iloc[2]).strip().upper() if len(row) > 2 and not pd.isna(row.iloc[2]) else "GERAL"
                     if not marca or marca in ["NAN", "NONE"]:
                         marca = "GERAL"
 
@@ -107,28 +129,30 @@ if menu == "📥 Upload & Importação":
                     produto_db_id = p_res[0]
                     
                     # Preço Assaí
-                    preco_assai = row.get("Preço Assaí")
-                    if not pd.isna(preco_assai) and isinstance(preco_assai, (int, float)) and preco_assai > 0:
-                        cursor.execute("SELECT id FROM fornecedores WHERE nome = 'Assaí Atacadista'")
-                        f_res = cursor.fetchone()
-                        if f_res:
-                            cursor.execute(
-                                "INSERT INTO cotacoes (produto_id, fornecedor_id, preco, data_cotacao) VALUES (?, ?, ?, date('now'))",
-                                (produto_db_id, f_res[0], float(preco_assai))
-                            )
-                            count_cots += 1
+                    if len(row) > 3:
+                        preco_assai = row.iloc[3]
+                        if not pd.isna(preco_assai) and isinstance(preco_assai, (int, float)) and preco_assai > 0:
+                            cursor.execute("SELECT id FROM fornecedores WHERE nome = 'Assaí Atacadista'")
+                            f_res = cursor.fetchone()
+                            if f_res:
+                                cursor.execute(
+                                    "INSERT INTO cotacoes (produto_id, fornecedor_id, preco, data_cotacao) VALUES (?, ?, ?, date('now'))",
+                                    (produto_db_id, f_res[0], float(preco_assai))
+                                )
+                                count_cots += 1
                             
                     # Preço Atacadão
-                    preco_atacadao = row.get("Preço Atacadão")
-                    if not pd.isna(preco_atacadao) and isinstance(preco_atacadao, (int, float)) and preco_atacadao > 0:
-                        cursor.execute("SELECT id FROM fornecedores WHERE nome = 'Atacadão'")
-                        f_res = cursor.fetchone()
-                        if f_res:
-                            cursor.execute(
-                                "INSERT INTO cotacoes (produto_id, fornecedor_id, preco, data_cotacao) VALUES (?, ?, ?, date('now'))",
-                                (produto_db_id, f_res[0], float(preco_atacadao))
-                            )
-                            count_cots += 1
+                    if len(row) > 4:
+                        preco_atacadao = row.iloc[4]
+                        if not pd.isna(preco_atacadao) and isinstance(preco_atacadao, (int, float)) and preco_atacadao > 0:
+                            cursor.execute("SELECT id FROM fornecedores WHERE nome = 'Atacadão'")
+                            f_res = cursor.fetchone()
+                            if f_res:
+                                cursor.execute(
+                                    "INSERT INTO cotacoes (produto_id, fornecedor_id, preco, data_cotacao) VALUES (?, ?, ?, date('now'))",
+                                    (produto_db_id, f_res[0], float(preco_atacadao))
+                                )
+                                count_cots += 1
                             
                 conn.commit()
                 conn.close()
@@ -232,7 +256,7 @@ elif menu == "📦 Gestão de Lotes & Precificação":
                 lote_id = cursor.lastrowid
                 
                 for p_id, qtd, preco in lote_itens_salvar:
-                    cursor.execute("INSERT INTO itens_lote (lote_id, produto_id, quantidade, preco_unitario) VALUES (?, ?, ?, ?)", (lote_id, p_id, qtd, preco))
+                    cursor.execute("INSERT INTO itens_lote (lote_id, produto_id, quantidade, preco_unitario) VALUES (?, ?, ?, ?)", (lote_id, p_id, preco))
                 
                 conn.commit()
                 conn.close()
