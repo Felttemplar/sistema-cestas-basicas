@@ -51,7 +51,6 @@ if menu == "📥 Upload & Importação":
                 count_prods = 0
                 count_cots = 0
                 
-                # Mapeamento exato das colunas de atacadistas na sua planilha
                 atacadistas_indices = {
                     "Assaí Atacadista": 4,
                     "Atacadão": 6
@@ -61,24 +60,19 @@ if menu == "📥 Upload & Importação":
                     if len(row) < 2:
                         continue
                     
-                    # O NOME DO PRODUTO FICA ESTRITAMENTE NA 2ª COLUNA (ÍNDICE 1)
                     val_prod = str(row.iloc[1]).strip() if not pd.isna(row.iloc[1]) else ""
                     val_up = val_prod.upper()
                     
-                    # Ignora linhas vazias, cabeçalhos ou seções de categorias
                     if not val_prod or val_up in ["NAN", "NONE", "PRODUTO", "ITEM", "ALIMENTOS", "HIGIENE", "LIMPEZA", "RESFRIADOS/CONGELADOS"]:
                         continue
                     if val_up.startswith("ALIMENTOS") or val_up.startswith("HIGIENE") or val_up.startswith("LIMPEZA"):
                         continue
                         
                     nome_prod = val_prod
-                    
-                    # 3ª coluna (índice 2) = Unidade
                     unidade = str(row.iloc[2]).strip() if len(row) > 2 and not pd.isna(row.iloc[2]) else "UN"
                     if unidade.upper() in ["NAN", "NONE", ""]:
                         unidade = "UN"
                         
-                    # 4ª coluna (índice 3) = Marca
                     marca = str(row.iloc[3]).strip() if len(row) > 3 and not pd.isna(row.iloc[3]) else "Geral"
                     if marca.upper() in ["NAN", "NONE", ""]:
                         marca = "Geral"
@@ -96,7 +90,6 @@ if menu == "📥 Upload & Importação":
                         continue
                     produto_db_id = p_res[0]
                     
-                    # Insere cotações dos atacadistas mapeados
                     for atac_nome, col_idx in atacadistas_indices.items():
                         if col_idx < len(row):
                             preco_val = row.iloc[col_idx]
@@ -177,9 +170,11 @@ elif menu == "📦 Gestão de Lotes & Precificação":
     conn.close()
     
     if not df_prods.empty:
+        # Definimos a quantidade fora do form para atualizar o número de linhas dinamicamente
+        qtde_itens = st.number_input("Quantos itens compõem este lote de compra?", min_value=1, max_value=50, value=7, step=1)
+        
         with st.form("form_lote"):
             st.subheader("Itens e Quantidades do Lote")
-            qtde_itens = st.number_input("Quantos itens compõem este lote de compra?", min_value=1, max_value=50, value=5)
             
             itens_lote_dados = []
             for i in range(int(qtde_itens)):
@@ -187,9 +182,9 @@ elif menu == "📦 Gestão de Lotes & Precificação":
                 with cols[0]:
                     prod_sel = st.selectbox(f"Produto {i+1}", df_prods["id"], format_func=lambda x: df_prods[df_prods["id"] == x]["item"].values[0], key=f"lote_prod_{i}")
                 with cols[1]:
-                    qtd_compra = st.number_input(f"Qtd Comprada", min_value=0.1, value=10.0, key=f"lote_qtd_{i}")
+                    qtd_compra = st.number_input(f"Qtd Comprada {i+1}", min_value=0.1, value=10.0, key=f"lote_qtd_{i}")
                 with cols[2]:
-                    custo_unit = st.number_input(f"Custo Unit. (R$)", min_value=0.01, value=5.00, key=f"lote_custo_{i}")
+                    custo_unit = st.number_input(f"Custo Unit. {i+1} (R$)", min_value=0.01, value=5.00, key=f"lote_custo_{i}")
                 itens_lote_dados.append((prod_sel, qtd_compra, custo_unit))
                 
             if st.form_submit_button("💾 Salvar Lote no Estoque"):
