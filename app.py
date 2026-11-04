@@ -18,7 +18,7 @@ menu = st.sidebar.radio("Navegabilidade:", [
 # 1. CADASTRAR PRODUTOS & MARCAS
 if menu == "📦 Cadastrar Produtos & Marcas":
     st.header("📦 Cadastro de Produtos e Marcas")
-    st.markdown("Cadastre os insumos e alimentos com suas respectivas marcas e unidades de medida[cite: 1].")
+    st.markdown("Cadastre os insumos e alimentos com suas respectivas marcas e unidades de medida.")
     
     with st.form("form_prod"):
         n = st.text_input("Nome do Produto (Ex: Arroz 1kg, Feijão 1kg)")
@@ -40,7 +40,7 @@ if menu == "📦 Cadastrar Produtos & Marcas":
 # 2. FORNECEDORES & PREÇOS
 elif menu == "🏭 Fornecedores & Preços":
     st.header("🏭 Cotações por Atacadista")
-    st.markdown("Registre os preços de mercado praticados pelos atacadistas de Boa Vista[cite: 1].")
+    st.markdown("Registre os preços de mercado praticados pelos atacadistas de Boa Vista.")
     
     conn = get_connection()
     prods = pd.read_sql_query("SELECT id, (nome || ' - ' || marca) AS item FROM produtos", conn)
@@ -78,7 +78,7 @@ elif menu == "📊 Cotações & Histórico":
 # 4. GESTÃO DE LOTES & PRECIFICAÇÃO
 elif menu == "📦 Gestão de Lotes & Precificação":
     st.header("📦 Controle de Lotes de Compra & Custos Fechados")
-    st.markdown("Cada compra define um lote independente com frete, embalagem e margem de lucro exclusiva[cite: 1].")
+    st.markdown("Cada compra define um lote independente com frete, embalagem e margem de lucro exclusiva.")
     
     conn = get_connection()
     fornecs = pd.read_sql_query("SELECT id, nome FROM fornecedores", conn)
