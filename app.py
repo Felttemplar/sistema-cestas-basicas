@@ -205,7 +205,7 @@ elif menu == "📦 Gestão de Lotes & Precificação":
 
 elif menu == "🧩 Montagem de Kits":
     st.header("🧩 Cálculo Automático de Rendimento de Cestas & Precificação")
-    st.markdown("O sistema analisa a quantidade de cada produto disponível no lote e calcula o **número máximo de cestas** que podem ser montadas.")
+    st.markdown("Defina a receita do kit e o sistema calcula instantaneamente o **número máximo de cestas** possíveis com base no estoque do lote.")
     
     conn = get_connection()
     df_lotes = pd.read_sql_query("SELECT id, nome_lote, custo_total FROM lotes ORDER BY id DESC", conn)
@@ -223,48 +223,47 @@ elif menu == "🧩 Montagem de Kits":
         conn.close()
         
         if not df_itens.empty:
-            st.subheader("📋 Definição da Receita (Quantos de cada item vai em 1 Cesta)")
+            st.markdown("---")
+            st.subheader("📋 Receita do Kit (Quantidade de cada item por Cesta)")
             
-            receita = {}
             custo_cesta_unitario = 0.0
             capacidades_maximas = []
             
+            # Usamos um container com borda ou espaçamento limpo para renderizar todos os itens
             for idx, row in df_itens.iterrows():
-                col_rec1, col_rec2, col_rec3 = st.columns([3, 2, 2])
-                with col_rec1:
-                    st.write(f"**{row['produto']}** (Estoque no Lote: `{int(row['quantidade'])}` un)")
-                with col_rec2:
-                    # Chave única garantida combinando o índice da linha e o ID do produto
-                    qtd_na_cesta = st.number_input(f"Qtd por Cesta {idx}", min_value=1, value=1, key=f"rec_{idx}_{row['id']}")
-                with col_rec3:
-                    subtotal_item = qtd_na_cesta * row['preco_unitario']
-                    st.write(f"Custo no Kit: **R$ {subtotal_item:.2f}**")
+                with st.container():
+                    col_p, col_q, col_c = st.columns([3, 2, 2])
+                    with col_p:
+                        st.markdown(f"**{row['produto']}**  \n*(Estoque Lote: {int(row['quantidade'])} un | Custo Unit: R$ {row['preco_unitario']:.2f})*")
+                    with col_q:
+                        qtd_na_cesta = st.number_input(f"Qtd por Cesta", min_value=0, value=1, key=f"rec_{idx}_{row['id']}")
+                    with col_c:
+                        subtotal_item = qtd_na_cesta * row['preco_unitario']
+                        st.markdown(f"**Subtotal:**  \nR$ {subtotal_item:.2f}")
                     
-                custo_cesta_unitario += subtotal_item
-                
-                cap_item = int(row['quantidade'] // qtd_na_cesta) if qtd_na_cesta > 0 else 0
-                capacidades_maximas.append(cap_item)
+                    custo_cesta_unitario += subtotal_item
+                    
+                    if qtd_na_cesta > 0:
+                        cap_item = int(row['quantidade'] // qtd_na_cesta)
+                        capacidades_maximas.append(cap_item)
+                    
+                    st.divider()
             
             max_cestas_possiveis = min(capacidades_maximas) if capacidades_maximas else 0
             preco_venda_sugerido = custo_cesta_unitario * (1 + (margem / 100))
             lucro_unitario = preco_venda_sugerido - custo_cesta_unitario
             lucro_total = lucro_unitario * max_cestas_possiveis
             
-            st.markdown("---")
-            st.subheader("📊 Resultado do Rendimento Automático do Lote")
+            st.subheader("📊 Resumo do Rendimento Automático & Precificação")
             
             col_m1, col_m2, col_m3, col_m4 = st.columns(4)
             with col_m1:
-                st.metric("Cestas Possíveis (Gargalo)", f"{max_cestas_possiveis} Cestas", help="Definido pelo item de menor estoque no lote")
+                st.metric("Cestas Possíveis (Gargalo)", f"{max_cestas_possiveis} Cestas")
             with col_m2:
-                st.metric("Custo de Produção (1 Cesta)", f"R$ {custo_cesta_unitario:.2f}")
+                st.metric("Custo Unitário da Cesta", f"R$ {custo_cesta_unitario:.2f}")
             with col_m3:
-                st.metric("Preço de Venda Sugerido", f"R$ {preco_venda_sugerido:.2f}", delta=f"{margem}% Margem")
+                st.metric("Preço de Venda Sugerido", f"R$ {preco_venda_sugerido:.2f}", delta=f"{margem}% Lucro")
             with col_m4:
                 st.metric("Lucro Total Estimado", f"R$ {lucro_total:.2f}")
-
-            st.markdown("---")
-            st.subheader("Composição Detalhada do Lote no Banco de Dados")
-            st.dataframe(df_itens[["produto", "quantidade", "preco_unitario"]], use_container_width=True)
     else:
         st.info("Nenhum lote cadastrado. Vá na aba 'Gestão de Lotes & Precificação' para registrar a primeira compra.")
