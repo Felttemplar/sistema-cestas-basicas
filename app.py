@@ -219,6 +219,7 @@ elif menu == "🧩 Montagem de Kits":
         margem = st.slider("Margem de Lucro Desejada (%)", min_value=0.0, max_value=100.0, value=25.0, step=1.0)
         
         conn = get_connection()
+        # Garante a busca do preco_unitario real salvo na tabela itens_lote
         df_itens = pd.read_sql_query(f"SELECT p.id, (p.nome || ' - ' || p.marca) AS produto, il.quantidade, il.preco_unitario FROM itens_lote il JOIN produtos p ON il.produto_id = p.id WHERE il.lote_id = {lote_escolhido}", conn)
         conn.close()
         
@@ -229,7 +230,6 @@ elif menu == "🧩 Montagem de Kits":
             custo_cesta_unitario = 0.0
             capacidades_maximas = []
             
-            # Usamos um container com borda ou espaçamento limpo para renderizar todos os itens
             for idx, row in df_itens.iterrows():
                 with st.container():
                     col_p, col_q, col_c = st.columns([3, 2, 2])
