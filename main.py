@@ -36,7 +36,6 @@ if menu == "📥 Upload & Importação":
     
     if uploaded_file is not None:
         try:
-            # Leitura robusta utilizando o motor calamine (sem necessidade de openpyxl)
             df_up = pd.read_excel(uploaded_file, sheet_name=0, engine="calamine")
             st.success(f"Planilha carregada com sucesso! {len(df_up)} linhas encontradas.")
             
@@ -44,50 +43,45 @@ if menu == "📥 Upload & Importação":
                 conn = get_connection()
                 cursor = conn.cursor()
                 
-                atacadistas_cols = {
-                    "Assaí Atacadista": 5,
-                    "Atacadão": 6,
-                    "Supermercado Gavião": 7,
-                    "Novo Tempo": 8,
-                    "Nova Era": 9,
-                    "Goiano": 10,
-                    "Aguiar": 11,
-                    "Distribuidora 1": 12
-                }
-                
                 count_prods = 0
                 count_cots = 0
                 
+                atacadistas_lista = [
+                    "Assaí Atacadista", "Atacadão", "Supermercado Gavião", 
+                    "Novo Tempo", "Nova Era", "Goiano", "Aguiar", "Distribuidora 1"
+                ]
+                
                 for idx, row in df_up.iterrows():
-                    if len(row) < 5:
-                        continue
-                    nome_prod = row.iloc[2]
-                    unidade = row.iloc[3]
-                    marca = row.iloc[4]
-                    
-                    if pd.isna(nome_prod) or str(nome_prod).strip() == "":
+                    try:
+                        # Mapeamento seguro pelos nomes exatos das colunas da planilha
+                        nome_prod = str(row.get("Produto", row.iloc[2])).strip()
+                        unidade = str(row.get("Unidade", row.iloc[3])).strip()
+                        marca = str(row.get("Marca", row.iloc[4])).strip()
+                    except Exception:
                         continue
                         
-                    nome_clean = str(nome_prod).strip()
-                    unidade_str = str(unidade).strip() if not pd.isna(unidade) else "UN"
-                    marca_str = str(marca).strip() if not pd.isna(marca) and str(marca).strip() != "" else "Geral"
+                    if not nome_prod or nome_prod.lower() == "nan" or nome_prod == "":
+                        continue
+                        
+                    unidade_str = unidade if unidade and unidade.lower() != "nan" else "UN"
+                    marca_str = marca if marca and marca.lower() != "nan" else "Geral"
                     
                     cursor.execute(
                         "INSERT OR IGNORE INTO produtos (nome, marca, unidade, grupo_equivalencia) VALUES (?, ?, ?, ?)",
-                        (nome_clean, marca_str, unidade_str, nome_clean)
+                        (nome_prod, marca_str, unidade_str, nome_prod)
                     )
                     conn.commit()
                     count_prods += 1
                     
-                    cursor.execute("SELECT id FROM produtos WHERE nome = ? AND marca = ?", (nome_clean, marca_str))
+                    cursor.execute("SELECT id FROM produtos WHERE nome = ? AND marca = ?", (nome_prod, marca_str))
                     p_res = cursor.fetchone()
                     if not p_res:
                         continue
                     produto_db_id = p_res[0]
                     
-                    for atac_nome, col_idx in atacadistas_cols.items():
-                        if col_idx < len(row):
-                            preco_val = row.iloc[col_idx]
+                    for atac_nome in atacadistas_lista:
+                        if atac_nome in df_up.columns:
+                            preco_val = row[atac_nome]
                             if not pd.isna(preco_val) and isinstance(preco_val, (int, float)) and preco_val > 0:
                                 cursor.execute("SELECT id FROM fornecedores WHERE nome = ?", (atac_nome,))
                                 f_res = cursor.fetchone()
@@ -135,7 +129,7 @@ elif menu == "🏭 Fornecedores & Preços":
             if st.form_submit_button("Salvar Cotação"):
                 conn = get_connection()
                 cursor = conn.cursor()
-                cursor.execute("INSERT INTO cotacoes (produto_id, fornecedor_id, preco, data_cotacao) VALUES (?, ?, ?, date('now'))", (p, f, pr))
+                cursor.execute("INSERT OR IGNORE INTO cotacoes (produto_id, fornecedor_id, preco, data_cotacao) VALUES (?, ?, ?, date('now'))", (p, f, pr))
                 conn.commit()
                 conn.close()
                 st.success("Cotação salva!")
