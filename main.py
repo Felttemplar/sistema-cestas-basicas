@@ -2,10 +2,39 @@
 import pandas as pd
 from datetime import datetime
 from core.database import init_db, get_connection
+import os
+import io
 
 init_db()
 st.set_page_config(page_title="Cestas Bom Dia - Boa Vista", page_icon="🛒", layout="wide")
-st.title("🛒 Cestas Bom Dia - Gestão Operacional & Lotes")
+st.title("🛒 Cestas BomDia - Gestão Operacional & Lotes")
+
+# Função auxiliar para garantir que a planilha modelo oficial exista sempre na raiz
+def garantir_planilha_modelo():
+    nome_arquivo = "Cestas_Bom_Dia_Template_Upload.xlsx"
+    if not os.path.exists(nome_arquivo):
+        dados_modelo = [
+            {"Nome do Produto": "ARROZ 1KG", "Unidade": "KG", "Marca": "PRATO CHIC", "Preço Assaí": 3.39, "Preço Atacadão": 4.49},
+            {"Nome do Produto": "FEIJÃO 1KG", "Unidade": "KG", "Marca": "KICALDO", "Preço Assaí": 5.62, "Preço Atacadão": 5.69},
+            {"Nome do Produto": "AÇUCAR 1KG", "Unidade": "KG", "Marca": "CRISTAL SONORA", "Preço Assaí": 2.79, "Preço Atacadão": 3.35},
+            {"Nome do Produto": "FARINHA", "Unidade": "UN", "Marca": "GERAL", "Preço Assaí": None, "Preço Atacadão": 4.29},
+            {"Nome do Produto": "TRIGO 1KG", "Unidade": "KG", "Marca": "TRIGOLAR", "Preço Assaí": 4.70, "Preço Atacadão": 4.69},
+            {"Nome do Produto": "OLEO 900ML", "Unidade": "FR", "Marca": "SERRA VERDE", "Preço Assaí": 7.49, "Preço Atacadão": 6.95},
+            {"Nome do Produto": "SAL 1KG", "Unidade": "KG", "Marca": "FELICIA", "Preço Assaí": 2.25, "Preço Atacadão": 1.79},
+            {"Nome do Produto": "MACARRÃO ESPAG. 400G", "Unidade": "PC", "Marca": "BOM SABOR", "Preço Assaí": 1.89, "Preço Atacadão": 2.09},
+            {"Nome do Produto": "MOLHO TOMATE SC300G", "Unidade": "SC/G", "Marca": "BONARE", "Preço Assaí": 1.59, "Preço Atacadão": 1.59},
+            {"Nome do Produto": "VINAGRE 500ML", "Unidade": "FR", "Marca": "VIRROSAS", "Preço Assaí": 3.19, "Preço Atacadão": 2.59},
+            {"Nome do Produto": "CAFE 250GR", "Unidade": "PC", "Marca": "PILÃO", "Preço Assaí": 8.09, "Preço Atacadão": 9.99},
+            {"Nome do Produto": "SARDINHA 125G", "Unidade": "LT", "Marca": "PALMEIRA", "Preço Assaí": 4.89, "Preço Atacadão": 5.59},
+            {"Nome do Produto": "BOLACHA DOCE RECHEADA 80G", "Unidade": "PC", "Marca": "TRIGOLINO", "Preço Assaí": 1.69, "Preço Atacadão": 1.39},
+            {"Nome do Produto": "BISCOITO SALGADO CREMCKER 300G", "Unidade": "PC", "Marca": "RACHEIRO", "Preço Assaí": 2.99, "Preço Atacadão": 3.99},
+            {"Nome do Produto": "COMPOSTO LACTEO 400G", "Unidade": "PC", "Marca": "PURIBON", "Preço Assaí": 8.39, "Preço Atacadão": 11.89},
+            {"Nome do Produto": "MIOJO 74G DVS SABOR", "Unidade": "UND", "Marca": "NOSSO SABOR LAMEN", "Preço Assaí": 1.23, "Preço Atacadão": 1.49}
+        ]
+        df_m = pd.DataFrame(dados_modelo)
+        df_m.to_excel(nome_arquivo, index=False)
+
+garantir_planilha_modelo()
 
 menu = st.sidebar.radio("Navegabilidade:", [
     "📥 Upload & Importação",
@@ -18,7 +47,7 @@ menu = st.sidebar.radio("Navegabilidade:", [
 
 if menu == "📥 Upload & Importação":
     st.header("📥 Importação Automatizada via Planilha Oficial")
-    st.markdown("Faça o upload da **Planilha Padrão Oficial** (`Cestas_Bom_Dia_Template_Upload.xlsx`) para atualizar produtos e cotações de forma limpa.")
+    st.markdown("Faça o upload da **Planilha Padrão Oficial** para atualizar produtos e cotações de forma limpa.")
     
     try:
         with open("Cestas_Bom_Dia_Template_Upload.xlsx", "rb") as f:
@@ -29,7 +58,7 @@ if menu == "📥 Upload & Importação":
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
             )
     except Exception:
-        st.info("Planilha modelo não encontrada na raiz.")
+        st.info("Clique abaixo para gerar a planilha modelo.")
         
     st.markdown("---")
     uploaded_file = st.file_uploader("Carregar Planilha Oficial Preenchida (.xlsx)", type=["xlsx"])
