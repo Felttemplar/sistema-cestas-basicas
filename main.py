@@ -36,9 +36,11 @@ if menu == "📥 Upload & Importação":
     
     if uploaded_file is not None:
         try:
-            # Lê o Excel garantindo que os nomes das colunas correspondam à primeira linha
             df_up = pd.read_excel(uploaded_file, sheet_name=0, engine="openpyxl")
             st.success(f"Planilha carregada com sucesso! {len(df_up)} linhas encontradas.")
+            
+            # Mostra as colunas detectadas para diagnóstico visual imediato
+            st.write("Colunas detetadas no Excel:", list(df_up.columns))
             
             if st.button("🚀 Processar e Alimentar Banco de Dados (Limpeza Total e Recarga)"):
                 conn = get_connection()
@@ -67,26 +69,47 @@ if menu == "📥 Upload & Importação":
                     if len(row) < 5:
                         continue
                     
-                    # Ignora linhas que sejam cabeçalhos ou vazias
-                    val_col2 = str(row.iloc[2]).strip() if not pd.isna(row.iloc[2]) else ""
-                    if not val_col2 or val_col2.lower() in ["nan", "produto", "item", "kg - alimento", "un - alimento"]:
+                    # Varre a linha para achar a célula que realmente contém o nome do produto (evitando unidades e categorias)
+                    nome_prod = ""
+                    unidade = "UN"
+                    marca = "Geral"
+                    
+                    # Tenta pegar da coluna 2 (índice padrão do produto)
+                    val_c2 = str(row.iloc[2]).strip() if not pd.isna(row.iloc[2]) else ""
+                    val_c3 = str(row.iloc[3]).strip() if len(row) > 3 and not pd.isna(row.iloc[3]) else ""
+                    val_c4 = str(row.iloc[4]).strip() if len(row) > 4 and not pd.isna(row.iloc[4]) else ""
+                    
+                    # Se a coluna 2 for categoria ou unidade, olha na coluna 1 ou procura o texto válido
+                    candidatos = [val_c2, val_c3, val_c4]
+                    for val in candidatos:
+                        val_up = val.upper()
+                        if val and val_up not in ["NAN", "NONE", "PRODUTO", "ITEM", "KG", "UN", "LT", "PCT", "UND", "SC", "CX", "ALIMENTO", "LIMPEZA", "HIGIENE", "KG - ALIMENTO", "UN - ALIMENTO"]:
+                            if not any(cat in val_up for cat in ["ALIMENTO", "LIMPEZA", "HIGIENE"]) and len(val) > 1:
+                                nome_prod = val
+                                break
+                    
+                    if not nome_prod:
                         continue
                         
-                    nome_prod = val_col2
-                    unidade = str(row.iloc[3]).strip() if len(row) > 3 and not pd.isna(row.iloc[3]) else "UN"
-                    marca = str(row.iloc[4]).strip() if len(row) > 4 and not pd.isna(row.iloc[4]) else "Geral"
-                    
-                    unidade_str = unidade if unidade and unidade.lower() != "nan" else "UN"
-                    marca_str = marca if marca and marca.lower() != "nan" else "Geral"
-                    
+                    # Define unidade e marca com base nas colunas adjacentes se existirem
+                    if len(row) > 3 and not pd.isna(row.iloc[3]):
+                        u_cand = str(row.iloc[3]).strip()
+                        if u_cand.upper() in ["KG", "UN", "PCT", "LT", "CX", "SC", "UND", "FR"]:
+                            unidade = u_cand
+                            
+                    if len(row) > 4 and not pd.isna(row.iloc[4]):
+                        m_cand = str(row.iloc[4]).strip()
+                        if m_cand.upper() not in ["NAN", "NONE"]:
+                            marca = m_cand
+
                     cursor.execute(
                         "INSERT INTO produtos (nome, marca, unidade, grupo_equivalencia) VALUES (?, ?, ?, ?)",
-                        (nome_prod.upper(), marca_str.upper(), unidade_str.upper(), nome_prod.upper())
+                        (nome_prod.upper(), marca.upper(), unidade.upper(), nome_prod.upper())
                     )
                     conn.commit()
                     count_prods += 1
                     
-                    cursor.execute("SELECT id FROM produtos WHERE nome = ? AND marca = ?", (nome_prod.upper(), marca_str.upper()))
+                    cursor.execute("SELECT id FROM produtos WHERE nome = ? AND marca = ?", (nome_prod.upper(), marca.upper()))
                     p_res = cursor.fetchone()
                     if not p_res:
                         continue
@@ -107,7 +130,7 @@ if menu == "📥 Upload & Importação":
                                     count_cots += 1
                 conn.commit()
                 conn.close()
-                st.success(f"✅ Importação concluída com sucesso! {count_prods} produtos e {count_cots} cotações inseridos.")
+                st.success(f"✅ Importação finalizada! {count_prods} produtos válidos e {count_cots} cotações carregados.")
         except Exception as e:
             st.error(f"Erro crítico ao processar a planilha: {e}")
 
