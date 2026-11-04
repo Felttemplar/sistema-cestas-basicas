@@ -36,11 +36,9 @@ if menu == "📥 Upload & Importação":
     
     if uploaded_file is not None:
         try:
-            df_up = pd.read_excel(uploaded_file, sheet_name=0, engine="calamine")
+            # Leitura do Excel com calamine ou motor padrão
+            df_up = pd.read_excel(uploaded_file, sheet_name=0)
             st.success(f"Planilha carregada com sucesso! {len(df_up)} linhas encontradas.")
-            
-            # Normaliza os nomes das colunas para minúsculas para evitar erros de case-sensitive
-            df_up.columns = [str(c).strip().lower() for c in df_up.columns]
             
             if st.button("🚀 Processar e Alimentar Banco de Dados (Limpeza Total e Recarga)"):
                 conn = get_connection()
@@ -54,21 +52,30 @@ if menu == "📥 Upload & Importação":
                 count_prods = 0
                 count_cots = 0
                 
-                atacadistas_lista = [
-                    "assaí atacadista", "atacadão", "supermercado gavião", 
-                    "novo tempo", "nova era", "goiano", "aguiar", "distribuidora 1"
-                ]
+                # Mapeamento fixo de colunas por índice na planilha padrão para garantir funcionamento na nuvem
+                # Coluna 2: Produto, Coluna 3: Unidade, Coluna 4: Marca
+                # Atacadistas: Assaí(5), Atacadão(6), Gavião(7), Novo Tempo(8), Nova Era(9), Goiano(10), Aguiar(11), Distribuidora 1(12)
+                atacadistas_indices = {
+                    "Assaí Atacadista": 5,
+                    "Atacadão": 6,
+                    "Supermercado Gavião": 7,
+                    "Novo Tempo": 8,
+                    "Nova Era": 9,
+                    "Goiano": 10,
+                    "Aguiar": 11,
+                    "Distribuidora 1": 12
+                }
                 
                 for idx, row in df_up.iterrows():
-                    try:
-                        # Busca flexível por colunas normalizadas
-                        nome_prod = str(row.get("produto", row.get("item", ""))).strip()
-                        unidade = str(row.get("unidade", "UN")).strip()
-                        marca = str(row.get("marca", "Geral")).strip()
-                    except Exception:
+                    if len(row) < 5:
                         continue
-                        
-                    if not nome_prod or nome_prod.lower() == "nan" or nome_prod == "" or "unidade" in nome_prod.lower() or "categoria" in nome_prod.lower():
+                    
+                    # Extração segura por índice absoluto da coluna no template padrão
+                    nome_prod = str(row.iloc[2]).strip() if not pd.isna(row.iloc[2]) else ""
+                    unidade = str(row.iloc[3]).strip() if len(row) > 3 and not pd.isna(row.iloc[3]) else "UN"
+                    marca = str(row.iloc[4]).strip() if len(row) > 4 and not pd.isna(row.iloc[4]) else "Geral"
+                    
+                    if not nome_prod or nome_prod.lower() == "nan" or nome_prod == "" or "produto" in nome_prod.lower():
                         continue
                         
                     unidade_str = unidade if unidade and unidade.lower() != "nan" else "UN"
@@ -87,16 +94,11 @@ if menu == "📥 Upload & Importação":
                         continue
                     produto_db_id = p_res[0]
                     
-                    for atac_col in atacadistas_lista:
-                        if atac_col in df_up.columns:
-                            preco_val = row[atac_col]
+                    for atac_nome, col_idx in atacadistas_indices.items():
+                        if col_idx < len(row):
+                            preco_val = row.iloc[col_idx]
                             if not pd.isna(preco_val) and isinstance(preco_val, (int, float)) and preco_val > 0:
-                                # Mapeia nome formatado do atacadista
-                                atac_nome_real = atac_col.title()
-                                if atac_col == "assaí atacadista": atac_nome_real = "Assaí Atacadista"
-                                if atac_col == "atacadão": atac_nome_real = "Atacadão"
-                                
-                                cursor.execute("SELECT id FROM fornecedores WHERE LOWER(nome) = ?", (atac_col,))
+                                cursor.execute("SELECT id FROM fornecedores WHERE nome = ?", (atac_nome,))
                                 f_res = cursor.fetchone()
                                 if f_res:
                                     forn_id = f_res[0]
@@ -107,9 +109,9 @@ if menu == "📥 Upload & Importação":
                                     count_cots += 1
                 conn.commit()
                 conn.close()
-                st.success(f"✅ Importação concluída! {count_prods} produtos e {count_cots} cotações atualizados no sistema.")
+                st.success(f"✅ Importação concluída com sucesso! {count_prods} produtos e {count_cots} cotações inseridos.")
         except Exception as e:
-            st.error(f"Erro ao processar a planilha: {e}")
+            st.error(f"Erro crítico ao processar a planilha: {e}")
 
 elif menu == "📦 Cadastrar Produtos & Marcas":
     st.header("📦 Cadastro de Produtos e Marcas")
