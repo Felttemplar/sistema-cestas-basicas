@@ -2,7 +2,6 @@
 import pandas as pd
 from datetime import datetime
 from core.database import init_db, get_connection
-import io
 
 init_db()
 st.set_page_config(page_title="Cestas Bom Dia - Boa Vista", page_icon="🛒", layout="wide")
@@ -18,45 +17,19 @@ menu = st.sidebar.radio("Navegabilidade:", [
 ])
 
 if menu == "📥 Upload & Importação":
-    st.header("📥 Importação Automatizada via Planilha Padrão")
-    st.markdown("Baixe a **Planilha Modelo Oficial**, preencha com os preços dos atacadistas e faça o upload abaixo.")
+    st.header("📥 Importação Automatizada via Planilha Oficial")
+    st.markdown("Faça o upload da **Planilha Padrão Oficial** (`Cestas_Bom_Dia_Template_Upload.xlsx`) para atualizar produtos e cotações de forma limpa.")
     
-    # Gerador dinâmico da planilha modelo oficial perfeita para o app
-    df_modelo = pd.DataFrame([
-        {
-            "Nome do Produto": "ARROZ 1KG",
-            "Unidade": "KG",
-            "Marca": "PRATO CHIC",
-            "Preço Assaí": 3.39,
-            "Preço Atacadão": 4.49
-        },
-        {
-            "Nome do Produto": "FEIJÃO 1KG",
-            "Unidade": "KG",
-            "Marca": "KICALDO",
-            "Preço Assaí": 5.62,
-            "Preço Atacadão": 5.69
-        },
-        {
-            "Nome do Produto": "AÇUCAR 1KG",
-            "Unidade": "KG",
-            "Marca": "CRISTAL SONORA",
-            "Preço Assaí": 2.79,
-            "Preço Atacadão": 3.35
-        }
-    ])
-    
-    output = io.BytesIO()
-    with pd.ExcelWriter(output, engine='openpyxl') as writer:
-        df_modelo.to_excel(writer, index=False, sheet_name='Cotações')
-    excel_data = output.getvalue()
-    
-    st.download_button(
-        label="⬇️ Baixar Planilha Modelo Oficial Padronizada",
-        data=excel_data,
-        file_name="Planilha_Oficial_Cestas_Bom_Dia.xlsx",
-        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-    )
+    try:
+        with open("Cestas_Bom_Dia_Template_Upload.xlsx", "rb") as f:
+            st.download_button(
+                label="⬇️ Baixar Planilha Modelo Padrão Oficial",
+                data=f,
+                file_name="Cestas_Bom_Dia_Template_Upload.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            )
+    except Exception:
+        st.info("Planilha modelo não encontrada na raiz.")
         
     st.markdown("---")
     uploaded_file = st.file_uploader("Carregar Planilha Oficial Preenchida (.xlsx)", type=["xlsx"])
@@ -79,9 +52,8 @@ if menu == "📥 Upload & Importação":
                 count_cots = 0
                 
                 for idx, row in df_up.iterrows():
-                    # Leitura limpa baseada estritamente nas colunas nomeadas da planilha oficial
                     nome_prod = str(row.get("Nome do Produto", "")).strip()
-                    if not nome_prod or nome_prod.upper() in ["NAN", "NONE"]:
+                    if not nome_prod or nome_prod.upper() in ["NAN", "NONE", "PRODUTO", "ITEM"]:
                         continue
                         
                     unidade = str(row.get("Unidade", "UN")).strip().upper()
@@ -131,7 +103,7 @@ if menu == "📥 Upload & Importação":
                             
                 conn.commit()
                 conn.close()
-                st.success(f"✅ Importação oficial concluída! {count_prods} produtos e {count_cots} cotações gravadas com perfeição.")
+                st.success(f"✅ Importação oficial concluída com sucesso! {count_prods} produtos e {count_cots} cotações gravadas.")
         except Exception as e:
             st.error(f"Erro crítico ao processar a planilha oficial: {e}")
 
