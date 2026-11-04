@@ -66,7 +66,6 @@ if menu == "📥 Upload & Importação":
                     if len(row) < 5:
                         continue
                     
-                    # Varre as colunas iniciais para isolar estritamente o produto real
                     nome_prod = ""
                     unidade = "UN"
                     marca = "Geral"
@@ -75,7 +74,6 @@ if menu == "📥 Upload & Importação":
                         if col_idx < len(row) and not pd.isna(row.iloc[col_idx]):
                             val = str(row.iloc[col_idx]).strip()
                             val_up = val.upper()
-                            # Rejeita termos de categorias, unidades puras ou cabeçalhos
                             if val and val_up not in ["NAN", "NONE", "PRODUTO", "ITEM", "KG", "UN", "LT", "PCT", "UND", "SC", "CX", "ALIMENTO", "LIMPEZA", "HIGIENE", "KG - ALIMENTO", "UN - ALIMENTO"]:
                                 if not any(cat in val_up for cat in ["ALIMENTO", "LIMPEZA", "HIGIENE"]) and len(val) > 1:
                                     nome_prod = val
@@ -146,27 +144,30 @@ elif menu == "📦 Cadastrar Produtos & Marcas":
 elif menu == "🏭 Fornecedores & Preços":
     st.header("🏭 Cotações por Atacadista & Menor Preço")
     conn = get_connection()
-    prods = pd.read_sql_query("SELECT id, (nome || ' - ' || marca) AS item FROM produtos", conn)
-    fornecs = pd.read_sql_query("SELECT id, nome FROM fornecedores", conn)
+    df_cot = pd.read_sql_query("""
+        SELECT (p.nome || ' - ' || p.marca) AS produto, p.unidade, f.nome AS fornecedor, c.preco, c.data_cotacao
+        FROM cotacoes c 
+        JOIN produtos p ON c.produto_id = p.id 
+        JOIN fornecedores f ON c.fornecedor_id = f.id
+        ORDER BY c.preco ASC
+    """, conn)
     conn.close()
-    if not prods.empty and not fornecs.empty:
-        with st.form("form_cot"):
-            p = st.selectbox("Produto / Marca", prods["id"], format_func=lambda x: prods[prods["id"] == x]["item"].values[0])
-            f = st.selectbox("Atacadista", fornecs["id"], format_func=lambda x: fornecs[fornecs["id"] == x]["nome"].values[0])
-            pr = st.number_input("Preço Unitário (R$)", min_value=0.01, step=0.10)
-            if st.form_submit_button("Salvar Cotação"):
-                conn = get_connection()
-                cursor = conn.cursor()
-                cursor.execute("INSERT INTO cotacoes (produto_id, fornecedor_id, preco, data_cotacao) VALUES (?, ?, ?, date('now'))", (p, f, pr))
-                conn.commit()
-                conn.close()
-                st.success("Cotação salva!")
-                st.rerun()
+    
+    if not df_cot.empty:
+        st.dataframe(df_cot, use_container_width=True)
+    else:
+        st.info("Nenhuma cotação registada. Faça o upload da planilha primeiro.")
 
 elif menu == "📊 Cotações & Histórico":
     st.header("📊 Histórico Temporal de Preços")
     conn = get_connection()
-    df = pd.read_sql_query("SELECT c.data_cotacao, (p.nome || ' - ' || p.marca) AS prod, f.nome AS atac, c.preco FROM cotacoes c JOIN produtos p ON c.produto_id=p.id JOIN fornecedores f ON c.fornecedor_id=f.id ORDER BY c.data_cotacao DESC", conn)
+    df = pd.read_sql_query("""
+        SELECT c.data_cotacao, (p.nome || ' - ' || p.marca) AS prod, f.nome AS atac, c.preco 
+        FROM cotacoes c 
+        JOIN produtos p ON c.produto_id=p.id 
+        JOIN fornecedores f ON c.fornecedor_id=f.id 
+        ORDER BY c.data_cotacao DESC
+    """, conn)
     conn.close()
     if not df.empty: 
         st.dataframe(df, use_container_width=True)
@@ -175,8 +176,80 @@ elif menu == "📊 Cotações & Histórico":
 
 elif menu == "📦 Gestão de Lotes & Precificação":
     st.header("📦 Controle de Lotes de Compra & Custos Fechados")
-    st.info("Aqui você gerencia os lotes semanais comprados com base nos menores preços e calcula o rendimento das cestas.")
+    st.markdown("Registre o lote semanal de compras com base nas melhores cotações.")
+    
+    nome_lote_input = st.text_input("Identificação do Lote (Ex: Lote Semana 01 - Novembro)", value=f"Lote - {datetime.now().strftime('%d/%m/%Y')}")
+    
+    conn = get_connection()
+    df_prods = pd.read_sql_query("SELECT id, (nome || ' - ' || marca) AS item FROM produtos", conn)
+    conn.close()
+    
+    if not df_prods.empty:
+        with st.form("form_lote"):
+            st.subheader("Itens e Quantidades do Lote")
+            qtde_itens = st.number_input("Quantos itens compõem este lote de compra?", min_value=1, max_value=50, value=5)
+            
+            itens_lote_dados = []
+            for i in range(int(qtde_itens)):
+                cols = st.columns([3, 2, 2])
+                with cols[0]:
+                    prod_sel = st.selectbox(f"Produto {i+1}", df_prods["id"], format_func=lambda x: df_prods[df_prods["id"] == x]["item"].values[0], key=f"lote_prod_{i}")
+                with cols[1]:
+                    qtd_compra = st.number_input(f"Qtd Comprada", min_value=0.1, value=10.0, key=f"lote_qtd_{i}")
+                with cols[2]:
+                    custo_unit = st.number_input(f"Custo Unit. (R$)", min_value=0.01, value=5.00, key=f"lote_custo_{i}")
+                itens_lote_dados.append((prod_sel, qtd_compra, custo_unit))
+                
+            if st.form_submit_button("💾 Salvar Lote no Estoque"):
+                conn = get_connection()
+                cursor = conn.cursor()
+                custo_total_lote = sum([q * c for _, q, c in itens_lote_dados])
+                
+                cursor.execute("INSERT INTO lotes (nome_lote, data_compra, custo_total) VALUES (?, date('now'), ?)", (nome_lote_input, custo_total_lote))
+                lote_id = cursor.lastrowid
+                
+                for p_id, qtd, custo in itens_lote_dados:
+                    cursor.execute("INSERT INTO itens_lote (lote_id, produto_id, quantidade, preco_unitario) VALUES (?, ?, ?, ?)", (lote_id, p_id, qtd, custo))
+                
+                conn.commit()
+                conn.close()
+                st.success(f"✅ Lote '{nome_lote_input}' salvo com sucesso! Custo total: R$ {custo_total_lote:.2f}")
+    else:
+        st.warning("Cadastre ou importe produtos antes de gerenciar lotes.")
 
 elif menu == "🧩 Montagem de Kits":
-    st.header("🧩 Montagem de Kits e Cestas")
-    st.info("Montagem de kits e aplicação de margem de lucro ativa.")
+    st.header("🧩 Montagem de Kits e Cestas Básicas")
+    st.markdown("Calcule o custo de montagem das cestas aplicando margem de lucro e rendimento.")
+    
+    conn = get_connection()
+    df_lotes = pd.read_sql_query("SELECT id, nome_lote, custo_total FROM lotes ORDER BY id DESC", conn)
+    conn.close()
+    
+    if not df_lotes.empty:
+        lote_escolhido = st.selectbox("Selecione o Lote de Referência", df_lotes["id"], format_func=lambda x: df_lotes[df_lotes["id"] == x]["nome_lote"].values[0])
+        
+        margem = st.slider("Margem de Lucro Desejada (%)", min_value=0.0, max_value=100.0, value=25.0, step=1.0)
+        qtd_cestas = st.number_input("Quantas cestas serão montadas com este lote?", min_value=1, value=50)
+        
+        conn = get_connection()
+        df_itens = pd.read_sql_query(f"SELECT (p.nome || ' - ' || p.marca) AS produto, il.quantidade, il.preco_unitario FROM itens_lote il JOIN produtos p ON il.produto_id = p.id WHERE il.lote_id = {lote_escolhido}", conn)
+        conn.close()
+        
+        if not df_itens.empty:
+            st.subheader("Composição do Lote Selecionado")
+            st.dataframe(df_itens, use_container_width=True)
+            
+            custo_total_lote_sel = sum(df_itens["quantidade"] * df_itens["preco_unitario"])
+            custo_por_cesta = custo_total_lote_sel / qtd_cestas
+            preco_venda_cesta = custo_por_cesta * (1 + (margem / 100))
+            
+            st.markdown("---")
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                st.metric("Custo Total do Lote", f"R$ {custo_total_lote_sel:.2f}")
+            with col2:
+                st.metric("Custo Unitário da Cesta", f"R$ {custo_por_cesta:.2f}")
+            with col3:
+                st.metric("Preço de Venda Sugerido", f"R$ {preco_venda_cesta:.2f}", delta=f"{margem}% de Lucro")
+    else:
+        st.info("Nenhum lote cadastrado. Vá na aba 'Gestão de Lotes & Precificação' para registrar a primeira compra.")
