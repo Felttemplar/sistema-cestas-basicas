@@ -18,7 +18,7 @@ menu = st.sidebar.radio("Navegabilidade:", [
 
 if menu == "📥 Upload & Importação":
     st.header("📥 Importação Automatizada via Planilha Padrão")
-    st.markdown("Faça o upload da planilha padronizada para atualizar produtos e cotações.")
+    st.markdown("Faça o upload da planilha padronizada para atualizar produtos e cotações de forma limpa.")
     
     try:
         with open("Cestas_Bom_Dia_Template_Upload.xlsx", "rb") as f:
@@ -38,9 +38,6 @@ if menu == "📥 Upload & Importação":
         try:
             df_up = pd.read_excel(uploaded_file, sheet_name=0, engine="openpyxl")
             st.success(f"Planilha carregada com sucesso! {len(df_up)} linhas encontradas.")
-            
-            # Mostra as colunas detectadas para diagnóstico visual imediato
-            st.write("Colunas detetadas no Excel:", list(df_up.columns))
             
             if st.button("🚀 Processar e Alimentar Banco de Dados (Limpeza Total e Recarga)"):
                 conn = get_connection()
@@ -69,29 +66,24 @@ if menu == "📥 Upload & Importação":
                     if len(row) < 5:
                         continue
                     
-                    # Varre a linha para achar a célula que realmente contém o nome do produto (evitando unidades e categorias)
+                    # Varre as colunas iniciais para isolar estritamente o produto real
                     nome_prod = ""
                     unidade = "UN"
                     marca = "Geral"
                     
-                    # Tenta pegar da coluna 2 (índice padrão do produto)
-                    val_c2 = str(row.iloc[2]).strip() if not pd.isna(row.iloc[2]) else ""
-                    val_c3 = str(row.iloc[3]).strip() if len(row) > 3 and not pd.isna(row.iloc[3]) else ""
-                    val_c4 = str(row.iloc[4]).strip() if len(row) > 4 and not pd.isna(row.iloc[4]) else ""
-                    
-                    # Se a coluna 2 for categoria ou unidade, olha na coluna 1 ou procura o texto válido
-                    candidatos = [val_c2, val_c3, val_c4]
-                    for val in candidatos:
-                        val_up = val.upper()
-                        if val and val_up not in ["NAN", "NONE", "PRODUTO", "ITEM", "KG", "UN", "LT", "PCT", "UND", "SC", "CX", "ALIMENTO", "LIMPEZA", "HIGIENE", "KG - ALIMENTO", "UN - ALIMENTO"]:
-                            if not any(cat in val_up for cat in ["ALIMENTO", "LIMPEZA", "HIGIENE"]) and len(val) > 1:
-                                nome_prod = val
-                                break
+                    for col_idx in [2, 1, 3]:
+                        if col_idx < len(row) and not pd.isna(row.iloc[col_idx]):
+                            val = str(row.iloc[col_idx]).strip()
+                            val_up = val.upper()
+                            # Rejeita termos de categorias, unidades puras ou cabeçalhos
+                            if val and val_up not in ["NAN", "NONE", "PRODUTO", "ITEM", "KG", "UN", "LT", "PCT", "UND", "SC", "CX", "ALIMENTO", "LIMPEZA", "HIGIENE", "KG - ALIMENTO", "UN - ALIMENTO"]:
+                                if not any(cat in val_up for cat in ["ALIMENTO", "LIMPEZA", "HIGIENE"]) and len(val) > 1:
+                                    nome_prod = val
+                                    break
                     
                     if not nome_prod:
                         continue
                         
-                    # Define unidade e marca com base nas colunas adjacentes se existirem
                     if len(row) > 3 and not pd.isna(row.iloc[3]):
                         u_cand = str(row.iloc[3]).strip()
                         if u_cand.upper() in ["KG", "UN", "PCT", "LT", "CX", "SC", "UND", "FR"]:
@@ -130,7 +122,7 @@ if menu == "📥 Upload & Importação":
                                     count_cots += 1
                 conn.commit()
                 conn.close()
-                st.success(f"✅ Importação finalizada! {count_prods} produtos válidos e {count_cots} cotações carregados.")
+                st.success(f"✅ Importação limpa concluída com sucesso! {count_prods} produtos válidos e {count_cots} cotações inseridos.")
         except Exception as e:
             st.error(f"Erro crítico ao processar a planilha: {e}")
 
@@ -152,7 +144,7 @@ elif menu == "📦 Cadastrar Produtos & Marcas":
                 st.rerun()
 
 elif menu == "🏭 Fornecedores & Preços":
-    st.header("🏭 Cotações por Atacadista")
+    st.header("🏭 Cotações por Atacadista & Menor Preço")
     conn = get_connection()
     prods = pd.read_sql_query("SELECT id, (nome || ' - ' || marca) AS item FROM produtos", conn)
     fornecs = pd.read_sql_query("SELECT id, nome FROM fornecedores", conn)
@@ -183,8 +175,8 @@ elif menu == "📊 Cotações & Histórico":
 
 elif menu == "📦 Gestão de Lotes & Precificação":
     st.header("📦 Controle de Lotes de Compra & Custos Fechados")
-    st.info("Gestão de lotes e precificação ativa.")
+    st.info("Aqui você gerencia os lotes semanais comprados com base nos menores preços e calcula o rendimento das cestas.")
 
 elif menu == "🧩 Montagem de Kits":
     st.header("🧩 Montagem de Kits e Cestas")
-    st.info("Montagem de kits ativa.")
+    st.info("Montagem de kits e aplicação de margem de lucro ativa.")
