@@ -43,6 +43,11 @@ if menu == "📥 Upload & Importação":
                 conn = get_connection()
                 cursor = conn.cursor()
                 
+                # Limpa dados antigos para evitar duplicados corrompidos
+                cursor.execute("DELETE FROM cotacoes")
+                cursor.execute("DELETE FROM produtos")
+                conn.commit()
+                
                 count_prods = 0
                 count_cots = 0
                 
@@ -53,10 +58,10 @@ if menu == "📥 Upload & Importação":
                 
                 for idx, row in df_up.iterrows():
                     try:
-                        # Mapeamento seguro pelos nomes exatos das colunas da planilha
-                        nome_prod = str(row.get("Produto", row.iloc[2])).strip()
-                        unidade = str(row.get("Unidade", row.iloc[3])).strip()
-                        marca = str(row.get("Marca", row.iloc[4])).strip()
+                        # Mapeamento estrito pelas colunas reais da planilha padrão
+                        nome_prod = str(row.get("Produto", "")).strip()
+                        unidade = str(row.get("Unidade", "UN")).strip()
+                        marca = str(row.get("Marca", "Geral")).strip()
                     except Exception:
                         continue
                         
@@ -66,8 +71,9 @@ if menu == "📥 Upload & Importação":
                     unidade_str = unidade if unidade and unidade.lower() != "nan" else "UN"
                     marca_str = marca if marca and marca.lower() != "nan" else "Geral"
                     
+                    # Insere o produto correto
                     cursor.execute(
-                        "INSERT OR IGNORE INTO produtos (nome, marca, unidade, grupo_equivalencia) VALUES (?, ?, ?, ?)",
+                        "INSERT INTO produtos (nome, marca, unidade, grupo_equivalencia) VALUES (?, ?, ?, ?)",
                         (nome_prod, marca_str, unidade_str, nome_prod)
                     )
                     conn.commit()
@@ -79,6 +85,7 @@ if menu == "📥 Upload & Importação":
                         continue
                     produto_db_id = p_res[0]
                     
+                    # Insere as cotações para cada atacadista
                     for atac_nome in atacadistas_lista:
                         if atac_nome in df_up.columns:
                             preco_val = row[atac_nome]
@@ -88,7 +95,7 @@ if menu == "📥 Upload & Importação":
                                 if f_res:
                                     forn_id = f_res[0]
                                     cursor.execute(
-                                        "INSERT OR IGNORE INTO cotacoes (produto_id, fornecedor_id, preco, data_cotacao) VALUES (?, ?, ?, date('now'))",
+                                        "INSERT INTO cotacoes (produto_id, fornecedor_id, preco, data_cotacao) VALUES (?, ?, ?, date('now'))",
                                         (produto_db_id, forn_id, float(preco_val))
                                     )
                                     count_cots += 1
@@ -129,7 +136,7 @@ elif menu == "🏭 Fornecedores & Preços":
             if st.form_submit_button("Salvar Cotação"):
                 conn = get_connection()
                 cursor = conn.cursor()
-                cursor.execute("INSERT OR IGNORE INTO cotacoes (produto_id, fornecedor_id, preco, data_cotacao) VALUES (?, ?, ?, date('now'))", (p, f, pr))
+                cursor.execute("INSERT INTO cotacoes (produto_id, fornecedor_id, preco, data_cotacao) VALUES (?, ?, ?, date('now'))", (p, f, pr))
                 conn.commit()
                 conn.close()
                 st.success("Cotação salva!")
@@ -140,7 +147,10 @@ elif menu == "📊 Cotações & Histórico":
     conn = get_connection()
     df = pd.read_sql_query("SELECT c.data_cotacao, (p.nome || ' - ' || p.marca) AS prod, f.nome AS atac, c.preco FROM cotacoes c JOIN produtos p ON c.produto_id=p.id JOIN fornecedores f ON c.fornecedor_id=f.id ORDER BY c.data_cotacao DESC", conn)
     conn.close()
-    if not df.empty: st.dataframe(df, use_container_width=True)
+    if not df.empty: 
+        st.dataframe(df, use_container_width=True)
+    else:
+        st.info("Nenhuma cotação registada ou base de dados vazia.")
 
 elif menu == "📦 Gestão de Lotes & Precificação":
     st.header("📦 Controle de Lotes de Compra & Custos Fechados")
