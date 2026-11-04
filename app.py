@@ -16,6 +16,7 @@ menu = st.sidebar.radio("Ir para:", [
     "📈 Dashboard & Projeções",
     "📊 Cotações & Precificação", 
     "🛒 Registro de Pedidos / Vendas",
+    "📁 Importar Planilhas (Excel / CSV)",
     "📦 Cadastrar Produtos & Substitutos", 
     "🏭 Fornecedores & Preços", 
     "📋 Composição de Cestas & Kits"
@@ -112,7 +113,7 @@ elif menu == "📊 Cotações & Precificação":
         df_itens, custo_insumos, custo_total, valor_lucro, preco_venda = calcular_custo_cesta(cesta_id, margem, embalagem, frete)
         
         if df_itens.empty:
-            st.info("⚠️ Nenhuma cotação cadastrada para os itens desta cesta ainda. Vá na aba 'Fornecedores & Preços' para preencher.")
+            st.info("⚠️ Nenhuma cotação cadastrada para os itens desta cesta ainda. Vá na aba 'Fornecedores & Preços' ou 'Importar Planilhas' para preencher.")
         else:
             valor_imposto = preco_venda * (imposto / 100.0)
             preco_venda_final = preco_venda + valor_imposto
@@ -223,7 +224,81 @@ elif menu == "🛒 Registro de Pedidos / Vendas":
             }), use_container_width=True)
 
 # ==========================================
-# ABA 3: CADASTRAR PRODUTOS E SUBSTITUTOS
+# ABA 3: IMPORTAR PLANILHAS (EXCEL / CSV)
+# ==========================================
+elif menu == "📁 Importar Planilhas (Excel / CSV)":
+    st.header("📁 Importação de Cotações via Excel / Google Sheets")
+    st.markdown("Faça o upload do arquivo .xlsx preenchido para atualizar os preços dos atacadistas no sistema.")
+    
+    file_upload = st.file_uploader("Selecione o arquivo Excel de Cotação", type=["xlsx", "xls", "csv"])
+    
+    if file_upload is not None:
+        try:
+            if file_upload.name.endswith('.csv'):
+                df_upload = pd.read_csv(file_upload)
+            else:
+                df_upload = pd.read_excel(file_upload, skiprows=3) # Pula o cabeçalho de título
+                
+            st.subheader("Pré-visualização dos Dados Carregados:")
+            st.dataframe(df_upload.head(10), use_container_width=True)
+            
+            if st.button("🚀 Processar e Atualizar Cotações no Banco de Dados"):
+                conn = get_connection()
+                cursor = conn.cursor()
+                
+                count_cot = 0
+                data_hoje = datetime.now().strftime("%Y-%m-%d")
+                
+                # Mapeamento dinâmico de colunas dos atacadistas
+                cols_fornec = [c for c in df_upload.columns if c not in ["ID Produto", "Produto / Item", "Unidade", "Grupo / Categoria"]]
+                
+                for index, row in df_upload.iterrows():
+                    prod_nome = row.get("Produto / Item")
+                    grupo = row.get("Grupo / Categoria")
+                    unidade = row.get("Unidade", "UN")
+                    
+                    if pd.isna(prod_nome) or pd.isna(grupo):
+                        continue
+                        
+                    # Verifica/Insere Produto
+                    cursor.execute("SELECT id FROM produtos WHERE nome = ?", (prod_nome,))
+                    res_prod = cursor.fetchone()
+                    if res_prod:
+                        prod_id = res_prod[0]
+                    else:
+                        cursor.execute("INSERT INTO produtos (nome, unidade, grupo_equivalencia) VALUES (?, ?, ?)", (prod_nome, unidade, grupo))
+                        prod_id = cursor.lastrowid
+                        
+                    # Processa cotação de cada atacadista
+                    for f_nome in cols_fornec:
+                        preco_val = row.get(f_nome)
+                        if pd.notna(preco_val) and str(preco_val).strip() != "":
+                            try:
+                                preco_float = float(preco_val)
+                                # Verifica/Insere Fornecedor
+                                cursor.execute("SELECT id FROM fornecedores WHERE nome = ?", (f_nome,))
+                                res_f = cursor.fetchone()
+                                if res_f:
+                                    f_id = res_f[0]
+                                else:
+                                    cursor.execute("INSERT INTO fornecedores (nome, telefone) VALUES (?, ?)", (f_nome, "Atacado"))
+                                    f_id = cursor.lastrowid
+                                    
+                                cursor.execute("INSERT INTO cotacoes (produto_id, fornecedor_id, preco, data_cotacao) VALUES (?, ?, ?, ?)",
+                                               (prod_id, f_id, preco_float, data_hoje))
+                                count_cot += 1
+                            except ValueError:
+                                pass
+                                
+                conn.commit()
+                conn.close()
+                st.success(f"Sucesso! {count_cot} cotações atualizadas no banco de dados!")
+                st.rerun()
+        except Exception as e:
+            st.error(f"Erro ao ler o arquivo: {e}")
+
+# ==========================================
+# ABA 4: CADASTRAR PRODUTOS E SUBSTITUTOS
 # ==========================================
 elif menu == "📦 Cadastrar Produtos & Substitutos":
     st.header("📦 Cadastro de Produtos e Grupos de Substituição")
@@ -255,7 +330,7 @@ elif menu == "📦 Cadastrar Produtos & Substitutos":
     st.dataframe(df_prods, use_container_width=True)
 
 # ==========================================
-# ABA 4: FORNECEDORES & PREÇOS
+# ABA 5: FORNECEDORES & PREÇOS
 # ==========================================
 elif menu == "🏭 Fornecedores & Preços":
     st.header("🏭 Atacadistas, Distribuidoras e Cotações")
@@ -352,7 +427,7 @@ elif menu == "🏭 Fornecedores & Preços":
             st.dataframe(df_cot, use_container_width=True)
 
 # ==========================================
-# ABA 5: COMPOSIÇÃO DE CESTAS & KITS
+# ABA 6: COMPOSIÇÃO DE CESTAS & KITS
 # ==========================================
 elif menu == "📋 Composição de Cestas & Kits":
     st.header("📋 Gerenciamento de Cestas, Kits e Combos")
