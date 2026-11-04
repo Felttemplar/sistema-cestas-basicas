@@ -10,13 +10,15 @@ def init_db():
     conn = get_connection()
     cursor = conn.cursor()
     
-    # Tabela de Produtos
+    # Tabela de Produtos (com coluna de Estoque Atual)
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS produtos (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             nome TEXT NOT NULL,
             unidade TEXT NOT NULL,
-            grupo_equivalencia TEXT NOT NULL
+            grupo_equivalencia TEXT NOT NULL,
+            estoque_atual REAL DEFAULT 0.0,
+            estoque_minimo REAL DEFAULT 10.0
         )
     ''')
     
@@ -82,6 +84,7 @@ def init_db():
             canal_venda TEXT NOT NULL,
             vendedor TEXT DEFAULT 'Venda Direta',
             zona_entrega TEXT DEFAULT 'Zona 1 - Centro',
+            taxa_canal_percentual REAL DEFAULT 0.0,
             comissao_percentual REAL DEFAULT 0.0,
             imposto_percentual REAL DEFAULT 0.0,
             data_venda TEXT NOT NULL,
@@ -89,18 +92,18 @@ def init_db():
         )
     ''')
     
-    # Migração / Adaptação de tabelas legadas (Adiciona colunas que faltarem)
+    # Adicionar colunas caso a tabela ja exista (Migracao)
+    cursor.execute("PRAGMA table_info(produtos)")
+    p_cols = [c[1] for c in cursor.fetchall()]
+    if 'estoque_atual' not in p_cols:
+        cursor.execute("ALTER TABLE produtos ADD COLUMN estoque_atual REAL DEFAULT 100.0")
+    if 'estoque_minimo' not in p_cols:
+        cursor.execute("ALTER TABLE produtos ADD COLUMN estoque_minimo REAL DEFAULT 10.0")
+
     cursor.execute("PRAGMA table_info(vendas)")
-    columns = [column[1] for column in cursor.fetchall()]
-    
-    if 'vendedor' not in columns:
-        cursor.execute("ALTER TABLE vendas ADD COLUMN vendedor TEXT DEFAULT 'Venda Direta'")
-    if 'zona_entrega' not in columns:
-        cursor.execute("ALTER TABLE vendas ADD COLUMN zona_entrega TEXT DEFAULT 'Zona 1 - Centro'")
-    if 'comissao_percentual' not in columns:
-        cursor.execute("ALTER TABLE vendas ADD COLUMN comissao_percentual REAL DEFAULT 0.0")
-    if 'imposto_percentual' not in columns:
-        cursor.execute("ALTER TABLE vendas ADD COLUMN imposto_percentual REAL DEFAULT 0.0")
+    v_cols = [c[1] for c in cursor.fetchall()]
+    if 'taxa_canal_percentual' not in v_cols:
+        cursor.execute("ALTER TABLE vendas ADD COLUMN taxa_canal_percentual REAL DEFAULT 0.0")
 
     conn.commit()
     conn.close()
