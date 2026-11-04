@@ -36,8 +36,8 @@ if menu == "📥 Upload & Importação":
     
     if uploaded_file is not None:
         try:
-            # Leitura do Excel com calamine ou motor padrão
-            df_up = pd.read_excel(uploaded_file, sheet_name=0)
+            # Usa openpyxl explicitamente pois já garantimos no requirements.txt
+            df_up = pd.read_excel(uploaded_file, sheet_name=0, engine="openpyxl")
             st.success(f"Planilha carregada com sucesso! {len(df_up)} linhas encontradas.")
             
             if st.button("🚀 Processar e Alimentar Banco de Dados (Limpeza Total e Recarga)"):
@@ -52,9 +52,6 @@ if menu == "📥 Upload & Importação":
                 count_prods = 0
                 count_cots = 0
                 
-                # Mapeamento fixo de colunas por índice na planilha padrão para garantir funcionamento na nuvem
-                # Coluna 2: Produto, Coluna 3: Unidade, Coluna 4: Marca
-                # Atacadistas: Assaí(5), Atacadão(6), Gavião(7), Novo Tempo(8), Nova Era(9), Goiano(10), Aguiar(11), Distribuidora 1(12)
                 atacadistas_indices = {
                     "Assaí Atacadista": 5,
                     "Atacadão": 6,
@@ -70,7 +67,6 @@ if menu == "📥 Upload & Importação":
                     if len(row) < 5:
                         continue
                     
-                    # Extração segura por índice absoluto da coluna no template padrão
                     nome_prod = str(row.iloc[2]).strip() if not pd.isna(row.iloc[2]) else ""
                     unidade = str(row.iloc[3]).strip() if len(row) > 3 and not pd.isna(row.iloc[3]) else "UN"
                     marca = str(row.iloc[4]).strip() if len(row) > 4 and not pd.isna(row.iloc[4]) else "Geral"
