@@ -72,7 +72,10 @@ def _seed_initial_data():
         ("Kit Higiene", "Higiene"),
         ("Kit Higiene Família", "Higiene Família"),
         ("Sacola Limpeza 1", "Limpeza 1"),
-        ("Sacola Limpeza 2", "Limpeza 2")
+        ("Sacola Limpeza 2", "Limpeza 2"),
+        ("Cesta Estudante", "Estudante"),
+        ("Cesta Natalina", "Natalina"),
+        ("Cesta Natal Feliz", "Natal Feliz")
     ]
     for n, d in cestas: 
         cursor.execute("INSERT OR IGNORE INTO tipos_cesta (nome, descricao) VALUES (?, ?)", (n, d))
@@ -102,6 +105,8 @@ def _importar_planilha_automatica():
     
     try:
         df = pd.read_excel(EXCEL_PATH, sheet_name="CONCORRENTES COTAÇÃO", header=4)
+        
+        # Mapeamento exato das colunas de preços na planilha oficial
         atacadistas_map = {
             5: "Assaí Atacadista",
             7: "Atacadão",
@@ -116,28 +121,37 @@ def _importar_planilha_automatica():
         for idx, row in df.iterrows():
             if len(row) < 3:
                 continue
+                
+            cod_prod = row.iloc[1]
             nome_prod = row.iloc[2]
             unidade = row.iloc[3]
+            marca = row.iloc[4]
             
-            if pd.isna(nome_prod) or str(nome_prod).strip() == "" or str(nome_prod).upper() in ["ALIMENTO", "HIGIENE", "LIMPEZA"]:
+            # Validar se a linha contém um produto válido
+            if pd.isna(cod_prod) or pd.isna(nome_prod):
+                continue
+                
+            nome_clean = str(nome_prod).strip()
+            if nome_clean == "" or nome_clean.upper() in ["ALIMENTO", "HIGIENE", "LIMPEZA"]:
                 continue
                 
             unidade_str = str(unidade).strip() if not pd.isna(unidade) else "UN"
-            marca_principal = str(row.iloc[4]).strip() if not pd.isna(row.iloc[4]) else "Geral"
-            nome_clean = str(nome_prod).strip()
+            marca_str = str(marca).strip() if not pd.isna(marca) and str(marca).strip() != "" else "Geral"
             
+            # Inserir ou atualizar produto
             cursor.execute(
                 "INSERT OR IGNORE INTO produtos (nome, marca, unidade, grupo_equivalencia) VALUES (?, ?, ?, ?)",
-                (nome_clean, marca_principal, unidade_str, nome_clean)
+                (nome_clean, marca_str, unidade_str, nome_clean)
             )
             conn.commit()
             
-            cursor.execute("SELECT id FROM produtos WHERE nome = ? AND marca = ?", (nome_clean, marca_principal))
+            cursor.execute("SELECT id FROM produtos WHERE nome = ? AND marca = ?", (nome_clean, marca_str))
             p_res = cursor.fetchone()
             if not p_res:
                 continue
             produto_db_id = p_res[0]
             
+            # Inserir cotações dos atacadistas
             for col_idx, atac_nome in atacadistas_map.items():
                 if col_idx < len(row):
                     preco_val = row.iloc[col_idx]
