@@ -6,16 +6,16 @@ from core.engine import calcular_custo_cesta, obter_parametros, salvar_parametro
 
 init_db()
 
-st.set_page_config(page_title="Gestão Cesta da Família - Monte Roraima", page_icon="🛒", layout="wide")
+st.set_page_config(page_title="Gestão Cestas Bom Dia - Boa Vista/RR", page_icon="🛒", layout="wide")
 
-st.title("🛒 Sistema de Cotação, Precificação e Vendas - Boa Vista/RR")
-st.markdown("Gestão de fornecedores, frete por zonas, comissões, cotações e vendas por canal e vendedor.")
+st.title("🛒 Cestas Bom Dia - Sistema de Cotação, Precificação e Vendas")
+st.markdown("Gestão de fornecedores, frete por zonas, comissões, cotações, pedidos e vendas por canal e vendedor.")
 
 st.sidebar.header("Navegação")
 menu = st.sidebar.radio("Ir para:", [
     "📈 Dashboard & Projeções",
     "📊 Cotações & Precificação", 
-    "🛒 Registro de Vendas",
+    "🛒 Registro de Pedidos / Vendas",
     "📦 Cadastrar Produtos & Substitutos", 
     "🏭 Fornecedores & Preços", 
     "📋 Composição de Cestas & Kits"
@@ -47,7 +47,7 @@ if menu == "📈 Dashboard & Projeções":
     conn.close()
     
     if df_vendas.empty:
-        st.info("⚠️ Nenhuma venda registrada até o momento. Registre vendas na aba 'Registro de Vendas'.")
+        st.info("⚠️ Nenhum pedido/venda registrado até o momento. Registre novos pedidos na aba 'Registro de Pedidos / Vendas'.")
     else:
         total_faturamento = df_vendas['faturamento_total'].sum()
         total_unidades = df_vendas['quantidade_vendida'].sum()
@@ -136,11 +136,11 @@ elif menu == "📊 Cotações & Precificação":
             }), use_container_width=True)
 
 # ==========================================
-# ABA 2: REGISTRO DE VENDAS
+# ABA 2: REGISTRO DE PEDIDOS / VENDAS
 # ==========================================
-elif menu == "🛒 Registro de Vendas":
-    st.header("🛒 Registro e Controle de Vendas")
-    st.markdown("Registre as vendas especificando a **Zona de Boa Vista**, o **Vendedor** e o **Canal de Venda**.")
+elif menu == "🛒 Registro de Pedidos / Vendas":
+    st.header("🛒 Registro de Pedidos / Vendas")
+    st.markdown("Registre novos pedidos ou vendas especificando a **Zona de Boa Vista**, o **Vendedor** e o **Canal de Venda**.")
     
     conn = get_connection()
     tipos_cesta = pd.read_sql_query("SELECT id, nome FROM tipos_cesta", conn)
@@ -179,7 +179,7 @@ elif menu == "🛒 Registro de Vendas":
                 ])
                 
             comissao_perc = st.number_input("Comissão do Vendedor (%)", min_value=0.0, max_value=20.0, value=2.5, step=0.5)
-            btn_registrar_venda = st.form_submit_button("Registar Venda")
+            btn_registrar_venda = st.form_submit_button("Salvar Pedido / Venda")
             
             if btn_registrar_venda:
                 data_atual = datetime.now().strftime("%Y-%m-%d %H:%M")
@@ -191,11 +191,11 @@ elif menu == "🛒 Registro de Vendas":
                 ''', (cesta_id_venda, qtd_vendida, preco_praticado, canal, vendedor, zona, comissao_perc, data_atual))
                 conn.commit()
                 conn.close()
-                st.success(f"Venda de {qtd_vendida}x '{cesta_venda}' salva com sucesso!")
+                st.success(f"Pedido/Venda de {qtd_vendida}x '{cesta_venda}' salvo com sucesso!")
                 st.rerun()
                 
         st.markdown("---")
-        st.subheader("📊 Histórico de Vendas Realizadas")
+        st.subheader("📊 Histórico de Pedidos e Vendas Realizadas")
         conn = get_connection()
         df_vendas = pd.read_sql_query('''
             SELECT 
@@ -215,7 +215,7 @@ elif menu == "🛒 Registro de Vendas":
         conn.close()
         
         if df_vendas.empty:
-            st.info("Nenhuma venda registrada até o momento.")
+            st.info("Nenhum pedido ou venda registrado até o momento.")
         else:
             st.dataframe(df_vendas.style.format({
                 'preco_unitario_praticado': 'R$ {:.2f}',
