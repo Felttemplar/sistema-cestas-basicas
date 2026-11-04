@@ -1,4 +1,15 @@
-﻿import streamlit as st
+﻿try:
+    import openpyxl
+except ImportError:
+    import subprocess
+    import sys
+    try:
+        subprocess.check_call([sys.executable, "-m", "pip", "install", "--user", "openpyxl"])
+        import openpyxl
+    except Exception:
+        pass
+
+import streamlit as st
 import pandas as pd
 from datetime import datetime
 from core.database import init_db, get_connection
