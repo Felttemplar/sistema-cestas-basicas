@@ -51,56 +51,37 @@ if menu == "📥 Upload & Importação":
                 count_prods = 0
                 count_cots = 0
                 
+                # Mapeamento exato das colunas de atacadistas na sua planilha
                 atacadistas_indices = {
-                    "Assaí Atacadista": 5,
-                    "Atacadão": 6,
-                    "Supermercado Gavião": 7,
-                    "Novo Tempo": 8,
-                    "Nova Era": 9,
-                    "Goiano": 10,
-                    "Aguiar": 11,
-                    "Distribuidora 1": 12
+                    "Assaí Atacadista": 4,
+                    "Atacadão": 6
                 }
                 
                 for idx, row in df_up.iterrows():
-                    if len(row) < 3:
+                    if len(row) < 2:
                         continue
                     
-                    # Procura estritamente a célula que contém o nome real do produto
-                    nome_prod = ""
-                    unidade = "UN"
-                    marca = "Geral"
+                    # O NOME DO PRODUTO FICA ESTRITAMENTE NA 2ª COLUNA (ÍNDICE 1)
+                    val_prod = str(row.iloc[1]).strip() if not pd.isna(row.iloc[1]) else ""
+                    val_up = val_prod.upper()
                     
-                    # Testa colunas da esquerda para a direita ignorando unidades/categorias conhecidas
-                    for col_idx in [2, 1, 3, 0]:
-                        if col_idx < len(row) and not pd.isna(row.iloc[col_idx]):
-                            val = str(row.iloc[col_idx]).strip()
-                            val_up = val.upper()
-                            
-                            # Lista negra de termos que NÃO podem ser nomes de produtos
-                            termos_proibidos = [
-                                "NAN", "NONE", "PRODUTO", "ITEM", "KG", "UN", "LT", "PCT", 
-                                "UND", "SC", "CX", "FR", "ALIMENTO", "LIMPEZA", "HIGIENE", 
-                                "KG - ALIMENTO", "UN - ALIMENTO", "PC - ALIMENTO", "SC/G - ALIMENTO", "FR - ALIMENTO"
-                            ]
-                            
-                            if val and val_up not in termos_proibidos and not val_up.endswith("- ALIMENTO") and not val_up.endswith("- LIMPEZA"):
-                                if len(val) > 2:
-                                    nome_prod = val
-                                    break
-                    
-                    if not nome_prod:
+                    # Ignora linhas vazias, cabeçalhos ou seções de categorias
+                    if not val_prod or val_up in ["NAN", "NONE", "PRODUTO", "ITEM", "ALIMENTOS", "HIGIENE", "LIMPEZA", "RESFRIADOS/CONGELADOS"]:
+                        continue
+                    if val_up.startswith("ALIMENTOS") or val_up.startswith("HIGIENE") or val_up.startswith("LIMPEZA"):
                         continue
                         
-                    if len(row) > 3 and not pd.isna(row.iloc[3]):
-                        u_cand = str(row.iloc[3]).strip()
-                        if u_cand.upper() in ["KG", "UN", "PCT", "LT", "CX", "SC", "UND", "FR"]:
-                            unidade = u_cand
-                            
-                    if len(row) > 4 and not pd.isna(row.iloc[4]):
-                        m_cand = str(row.iloc[4]).strip()
-                        if m_cand.upper() not in ["NAN", "NONE"]:
-                            marca = m_cand
+                    nome_prod = val_prod
+                    
+                    # 3ª coluna (índice 2) = Unidade
+                    unidade = str(row.iloc[2]).strip() if len(row) > 2 and not pd.isna(row.iloc[2]) else "UN"
+                    if unidade.upper() in ["NAN", "NONE", ""]:
+                        unidade = "UN"
+                        
+                    # 4ª coluna (índice 3) = Marca
+                    marca = str(row.iloc[3]).strip() if len(row) > 3 and not pd.isna(row.iloc[3]) else "Geral"
+                    if marca.upper() in ["NAN", "NONE", ""]:
+                        marca = "Geral"
 
                     cursor.execute(
                         "INSERT INTO produtos (nome, marca, unidade, grupo_equivalencia) VALUES (?, ?, ?, ?)",
@@ -115,6 +96,7 @@ if menu == "📥 Upload & Importação":
                         continue
                     produto_db_id = p_res[0]
                     
+                    # Insere cotações dos atacadistas mapeados
                     for atac_nome, col_idx in atacadistas_indices.items():
                         if col_idx < len(row):
                             preco_val = row.iloc[col_idx]
@@ -130,7 +112,7 @@ if menu == "📥 Upload & Importação":
                                     count_cots += 1
                 conn.commit()
                 conn.close()
-                st.success(f"✅ Importação limpa concluída com sucesso! {count_prods} produtos válidos e {count_cots} cotações inseridos.")
+                st.success(f"✅ Importação concluída com sucesso! {count_prods} produtos válidos e {count_cots} cotações inseridos.")
         except Exception as e:
             st.error(f"Erro crítico ao processar a planilha: {e}")
 
