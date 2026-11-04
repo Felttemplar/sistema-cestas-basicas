@@ -51,9 +51,10 @@ if menu == "📥 Upload & Importação":
                 count_prods = 0
                 count_cots = 0
                 
+                # Mapeamento exato das colunas de preços na sua planilha
                 atacadistas_indices = {
-                    "Assaí Atacadista": 4,
-                    "Atacadão": 6
+                    "Assaí Atacadista": 5,  # Coluna F
+                    "Atacadão": 7           # Coluna H
                 }
                 
                 for idx, row in df_up.iterrows():
@@ -69,11 +70,11 @@ if menu == "📥 Upload & Importação":
                         continue
                         
                     nome_prod = val_prod
-                    unidade = str(row.iloc[2]).strip() if len(row) > 2 and not pd.isna(row.iloc[2]) else "UN"
+                    unidade = str(row.iloc[3]).strip() if len(row) > 3 and not pd.isna(row.iloc[3]) else "UN"
                     if unidade.upper() in ["NAN", "NONE", ""]:
                         unidade = "UN"
                         
-                    marca = str(row.iloc[3]).strip() if len(row) > 3 and not pd.isna(row.iloc[3]) else "Geral"
+                    marca = str(row.iloc[4]).strip() if len(row) > 4 and not pd.isna(row.iloc[4]) else "Geral"
                     if marca.upper() in ["NAN", "NONE", ""]:
                         marca = "Geral"
 
@@ -166,7 +167,6 @@ elif menu == "📦 Gestão de Lotes & Precificação":
     nome_lote_input = st.text_input("Identificação do Lote", value=f"Lote - {datetime.now().strftime('%d/%m/%Y')}")
     
     conn = get_connection()
-    # Puxa automaticamente o menor preço de cada produto entre os fornecedores da cotação
     df_sugestao = pd.read_sql_query("""
         SELECT p.id as produto_id, (p.nome || ' - ' || p.marca) AS item, MIN(c.preco) as menor_preco, f.nome as fornecedor
         FROM cotacoes c
@@ -200,7 +200,7 @@ elif menu == "📦 Gestão de Lotes & Precificação":
                 conn = get_connection()
                 cursor = conn.cursor()
                 custo_produtos = sum([q * p for _, q, p in lote_itens_salvar])
-                custo_total_lote = custo_produtos # O frete será adicionado na visão do kit
+                custo_total_lote = custo_produtos 
                 
                 cursor.execute("INSERT INTO lotes (nome_lote, data_compra, custo_total) VALUES (?, date('now'), ?)", (nome_lote_input, custo_total_lote))
                 lote_id = cursor.lastrowid
@@ -212,7 +212,7 @@ elif menu == "📦 Gestão de Lotes & Precificação":
                 conn.close()
                 st.success(f"✅ Lote '{nome_lote_input}' salvo com sucesso! Custo de produtos: R$ {custo_produtos:.2f}")
     else:
-        st.warning("Nenhuma cotação encontrada. Faça o upload da planilha primeiro.")
+        st.warning("Nenhuma cotação encontrada. Faça o upload da planilha novamente.")
 
 elif menu == "🧩 Montagem de Kits":
     st.header("🧩 Cálculo Automático de Rendimento, Frete & Sugestão de Venda")
@@ -263,7 +263,6 @@ elif menu == "🧩 Montagem de Kits":
             
             max_cestas_possiveis = min(capacidades_maximas) if capacidades_maximas else 0
             
-            # Adiciona o frete fixo de R$ 10,89 rateado por cesta (ou total somado)
             frete_fixo = 10.89
             custo_frete_por_cesta = frete_fixo / max_cestas_possiveis if max_cestas_possiveis > 0 else 0.0
             custo_total_unitario_cesta = custo_produtos_cesta + custo_frete_por_cesta
@@ -273,7 +272,6 @@ elif menu == "🧩 Montagem de Kits":
             st.markdown("---")
             st.subheader("📊 Painel de Sugestão de Venda e Custos")
             
-            # Quadrado / Card em destaque com o preço sugerido
             st.markdown(f"""
             <div style="background-color: #1e2530; padding: 25px; border-radius: 12px; border: 2px solid #28a745; text-align: center; margin-bottom: 20px;">
                 <h3 style="color: #ffffff; margin: 0; font-size: 20px;">PREÇO SUGERIDO DE VENDA POR CESTA</h3>
