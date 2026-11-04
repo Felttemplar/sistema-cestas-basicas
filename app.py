@@ -260,12 +260,12 @@ elif menu == "📦 Cadastrar Produtos & Substitutos":
 elif menu == "🏭 Fornecedores & Preços":
     st.header("🏭 Atacadistas, Distribuidoras e Cotações")
     
-    tab1, tab2 = st.tabs(["Cadastrar e Gerenciar Atacadistas", "Registrar Cotação de Preço"])
+    tab1, tab2, tab3 = st.tabs(["➕ Cadastrar Atacadista", "✏️ Atualizar / Gerenciar Atacadistas", "💰 Registrar Cotação de Preço"])
     
     with tab1:
         with st.form("form_fornecedor"):
             f_nome = st.text_input("Nome do Atacadista / Distribuidora (Ex: Atacadão, Assaí, Nova Era)")
-            f_tel = st.text_input("Contato / Telefone")
+            f_tel = st.text_input("Contato / Telefone / Tipo (Ex: Atacado, Varejo)")
             btn_f = st.form_submit_button("Salvar Atacadista")
             if btn_f and f_nome:
                 try:
@@ -278,24 +278,41 @@ elif menu == "🏭 Fornecedores & Preços":
                     st.rerun()
                 except Exception as e:
                     st.error(f"Erro: {e}")
-                    
-        st.markdown("---")
-        st.subheader("Atacadistas Cadastrados")
+
+    with tab2:
+        st.subheader("Atualizar ou Excluir Atacadistas Cadastrados")
         conn = get_connection()
         df_fornecs = pd.read_sql_query("SELECT id, nome, telefone FROM fornecedores", conn)
         conn.close()
         
-        if not df_fornecs.empty:
+        if df_fornecs.empty:
+            st.info("Nenhum fornecedor cadastrado.")
+        else:
             for index, row in df_fornecs.iterrows():
-                c1, c2, c3 = st.columns([3, 3, 2])
-                c1.write(f"**{row['nome']}**")
-                c2.write(f"Tel/Tipo: {row['telefone'] if row['telefone'] else 'Atacado'}")
-                if c3.button("🗑️ Excluir", key=f"del_fornec_{row['id']}"):
-                    deletar_fornecedor(row['id'])
-                    st.warning(f"Excluído com sucesso!")
-                    st.rerun()
+                with st.expander(f"🏢 {row['nome']} (Tel/Tipo: {row['telefone']})"):
+                    with st.form(f"form_edit_fornec_{row['id']}"):
+                        novo_nome = st.text_input("Nome do Atacadista", value=row['nome'], key=f"nome_{row['id']}")
+                        novo_tel = st.text_input("Contato / Telefone / Tipo", value=row['telefone'] if row['telefone'] else "", key=f"tel_{row['id']}")
+                        
+                        col_bt1, col_bt2 = st.columns(2)
+                        atualizar = col_bt1.form_submit_button("💾 Atualizar Dados")
+                        excluir = col_bt2.form_submit_button("🗑️ Excluir Fornecedor")
+                        
+                        if atualizar:
+                            conn = get_connection()
+                            cursor = conn.cursor()
+                            cursor.execute("UPDATE fornecedores SET nome = ?, telefone = ? WHERE id = ?", (novo_nome, novo_tel, row['id']))
+                            conn.commit()
+                            conn.close()
+                            st.success("Fornecedor atualizado com sucesso!")
+                            st.rerun()
+                            
+                        if excluir:
+                            deletar_fornecedor(row['id'])
+                            st.warning("Fornecedor excluído com sucesso!")
+                            st.rerun()
 
-    with tab2:
+    with tab3:
         conn = get_connection()
         prods = pd.read_sql_query("SELECT id, nome, grupo_equivalencia FROM produtos", conn)
         fornecs = pd.read_sql_query("SELECT id, nome FROM fornecedores", conn)
