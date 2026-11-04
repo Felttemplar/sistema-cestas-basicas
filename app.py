@@ -2,6 +2,7 @@
 import pandas as pd
 from datetime import datetime
 from core.database import init_db, get_connection
+import io
 
 init_db()
 st.set_page_config(page_title="Cestas Bom Dia - Boa Vista", page_icon="🛒", layout="wide")
@@ -18,28 +19,54 @@ menu = st.sidebar.radio("Navegabilidade:", [
 
 if menu == "📥 Upload & Importação":
     st.header("📥 Importação Automatizada via Planilha Padrão")
-    st.markdown("Faça o upload da planilha padronizada para atualizar produtos e cotações da data.")
+    st.markdown("Baixe a **Planilha Modelo Oficial**, preencha com os preços dos atacadistas e faça o upload abaixo.")
     
-    try:
-        with open("Cestas_Bom_Dia_Template_Upload.xlsx", "rb") as f:
-            st.download_button(
-                label="⬇️ Baixar Planilha Modelo Padrão",
-                data=f,
-                file_name="Cestas_Bom_Dia_Template_Upload.xlsx",
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-            )
-    except Exception:
-        st.info("Planilha modelo não encontrada na raiz.")
+    # Gerador dinâmico da planilha modelo oficial perfeita para o app
+    df_modelo = pd.DataFrame([
+        {
+            "Nome do Produto": "ARROZ 1KG",
+            "Unidade": "KG",
+            "Marca": "PRATO CHIC",
+            "Preço Assaí": 3.39,
+            "Preço Atacadão": 4.49
+        },
+        {
+            "Nome do Produto": "FEIJÃO 1KG",
+            "Unidade": "KG",
+            "Marca": "KICALDO",
+            "Preço Assaí": 5.62,
+            "Preço Atacadão": 5.69
+        },
+        {
+            "Nome do Produto": "AÇUCAR 1KG",
+            "Unidade": "KG",
+            "Marca": "CRISTAL SONORA",
+            "Preço Assaí": 2.79,
+            "Preço Atacadão": 3.35
+        }
+    ])
+    
+    output = io.BytesIO()
+    with pd.ExcelWriter(output, engine='openpyxl') as writer:
+        df_modelo.to_excel(writer, index=False, sheet_name='Cotações')
+    excel_data = output.getvalue()
+    
+    st.download_button(
+        label="⬇️ Baixar Planilha Modelo Oficial Padronizada",
+        data=excel_data,
+        file_name="Planilha_Oficial_Cestas_Bom_Dia.xlsx",
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    )
         
     st.markdown("---")
-    uploaded_file = st.file_uploader("Carregar Planilha Preenchida (.xlsx)", type=["xlsx"])
+    uploaded_file = st.file_uploader("Carregar Planilha Oficial Preenchida (.xlsx)", type=["xlsx"])
     
     if uploaded_file is not None:
         try:
             df_up = pd.read_excel(uploaded_file, sheet_name=0, engine="openpyxl")
-            st.success(f"Planilha carregada com sucesso! {len(df_up)} linhas encontradas.")
+            st.success(f"Planilha carregada com sucesso! {len(df_up)} produtos encontrados.")
             
-            if st.button("🚀 Processar e Salvar Cotações da Data"):
+            if st.button("🚀 Processar e Salvar Cotações Oficiais"):
                 conn = get_connection()
                 cursor = conn.cursor()
                 
@@ -51,64 +78,62 @@ if menu == "📥 Upload & Importação":
                 count_prods = 0
                 count_cots = 0
                 
-                # Mapeamento exato das colunas de preços na sua planilha
-                atacadistas_indices = {
-                    "Assaí Atacadista": 5,  # Coluna F
-                    "Atacadão": 7           # Coluna H
-                }
-                
                 for idx, row in df_up.iterrows():
-                    if len(row) < 2:
-                        continue
-                    
-                    val_prod = str(row.iloc[1]).strip() if not pd.isna(row.iloc[1]) else ""
-                    val_up = val_prod.upper()
-                    
-                    if not val_prod or val_up in ["NAN", "NONE", "PRODUTO", "ITEM", "ALIMENTOS", "HIGIENE", "LIMPEZA", "RESFRIADOS/CONGELADOS"]:
-                        continue
-                    if val_up.startswith("ALIMENTOS") or val_up.startswith("HIGIENE") or val_up.startswith("LIMPEZA"):
+                    # Leitura limpa baseada estritamente nas colunas nomeadas da planilha oficial
+                    nome_prod = str(row.get("Nome do Produto", "")).strip()
+                    if not nome_prod or nome_prod.upper() in ["NAN", "NONE"]:
                         continue
                         
-                    nome_prod = val_prod
-                    unidade = str(row.iloc[3]).strip() if len(row) > 3 and not pd.isna(row.iloc[3]) else "UN"
-                    if unidade.upper() in ["NAN", "NONE", ""]:
+                    unidade = str(row.get("Unidade", "UN")).strip().upper()
+                    if not unidade or unidade in ["NAN", "NONE"]:
                         unidade = "UN"
                         
-                    marca = str(row.iloc[4]).strip() if len(row) > 4 and not pd.isna(row.iloc[4]) else "Geral"
-                    if marca.upper() in ["NAN", "NONE", ""]:
-                        marca = "Geral"
+                    marca = str(row.get("Marca", "Geral")).strip().upper()
+                    if not marca or marca in ["NAN", "NONE"]:
+                        marca = "GERAL"
 
                     cursor.execute(
                         "INSERT INTO produtos (nome, marca, unidade, grupo_equivalencia) VALUES (?, ?, ?, ?)",
-                        (nome_prod.upper(), marca.upper(), unidade.upper(), nome_prod.upper())
+                        (nome_prod.upper(), marca, unidade, nome_prod.upper())
                     )
                     conn.commit()
                     count_prods += 1
                     
-                    cursor.execute("SELECT id FROM produtos WHERE nome = ? AND marca = ?", (nome_prod.upper(), marca.upper()))
+                    cursor.execute("SELECT id FROM produtos WHERE nome = ? AND marca = ?", (nome_prod.upper(), marca))
                     p_res = cursor.fetchone()
                     if not p_res:
                         continue
                     produto_db_id = p_res[0]
                     
-                    for atac_nome, col_idx in atacadistas_indices.items():
-                        if col_idx < len(row):
-                            preco_val = row.iloc[col_idx]
-                            if not pd.isna(preco_val) and isinstance(preco_val, (int, float)) and preco_val > 0:
-                                cursor.execute("SELECT id FROM fornecedores WHERE nome = ?", (atac_nome,))
-                                f_res = cursor.fetchone()
-                                if f_res:
-                                    forn_id = f_res[0]
-                                    cursor.execute(
-                                        "INSERT INTO cotacoes (produto_id, fornecedor_id, preco, data_cotacao) VALUES (?, ?, ?, date('now'))",
-                                        (produto_db_id, forn_id, float(preco_val))
-                                    )
-                                    count_cots += 1
+                    # Preço Assaí
+                    preco_assai = row.get("Preço Assaí")
+                    if not pd.isna(preco_assai) and isinstance(preco_assai, (int, float)) and preco_assai > 0:
+                        cursor.execute("SELECT id FROM fornecedores WHERE nome = 'Assaí Atacadista'")
+                        f_res = cursor.fetchone()
+                        if f_res:
+                            cursor.execute(
+                                "INSERT INTO cotacoes (produto_id, fornecedor_id, preco, data_cotacao) VALUES (?, ?, ?, date('now'))",
+                                (produto_db_id, f_res[0], float(preco_assai))
+                            )
+                            count_cots += 1
+                            
+                    # Preço Atacadão
+                    preco_atacadao = row.get("Preço Atacadão")
+                    if not pd.isna(preco_atacadao) and isinstance(preco_atacadao, (int, float)) and preco_atacadao > 0:
+                        cursor.execute("SELECT id FROM fornecedores WHERE nome = 'Atacadão'")
+                        f_res = cursor.fetchone()
+                        if f_res:
+                            cursor.execute(
+                                "INSERT INTO cotacoes (produto_id, fornecedor_id, preco, data_cotacao) VALUES (?, ?, ?, date('now'))",
+                                (produto_db_id, f_res[0], float(preco_atacadao))
+                            )
+                            count_cots += 1
+                            
                 conn.commit()
                 conn.close()
-                st.success(f"✅ Cotações salvas com sucesso! {count_prods} produtos e {count_cots} preços registrados.")
+                st.success(f"✅ Importação oficial concluída! {count_prods} produtos e {count_cots} cotações gravadas com perfeição.")
         except Exception as e:
-            st.error(f"Erro crítico ao processar a planilha: {e}")
+            st.error(f"Erro crítico ao processar a planilha oficial: {e}")
 
 elif menu == "📦 Cadastrar Produtos & Marcas":
     st.header("📦 Cadastro de Produtos e Marcas")
@@ -142,7 +167,7 @@ elif menu == "🏭 Fornecedores & Preços":
     if not df_cot.empty:
         st.dataframe(df_cot, use_container_width=True)
     else:
-        st.info("Nenhuma cotação registada. Faça o upload da planilha primeiro.")
+        st.info("Nenhuma cotação registada. Faça o upload da planilha oficial primeiro.")
 
 elif menu == "📊 Cotações & Histórico":
     st.header("📊 Histórico Temporal de Preços")
@@ -212,7 +237,7 @@ elif menu == "📦 Gestão de Lotes & Precificação":
                 conn.close()
                 st.success(f"✅ Lote '{nome_lote_input}' salvo com sucesso! Custo de produtos: R$ {custo_produtos:.2f}")
     else:
-        st.warning("Nenhuma cotação encontrada. Faça o upload da planilha novamente.")
+        st.warning("Nenhuma cotação encontrada. Faça o upload da planilha oficial primeiro.")
 
 elif menu == "🧩 Montagem de Kits":
     st.header("🧩 Cálculo Automático de Rendimento, Frete & Sugestão de Venda")
