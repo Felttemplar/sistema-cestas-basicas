@@ -36,7 +36,7 @@ if menu == "📥 Upload & Importação":
     
     if uploaded_file is not None:
         try:
-            # Usa openpyxl explicitamente pois já garantimos no requirements.txt
+            # Lê o Excel garantindo que os nomes das colunas correspondam à primeira linha
             df_up = pd.read_excel(uploaded_file, sheet_name=0, engine="openpyxl")
             st.success(f"Planilha carregada com sucesso! {len(df_up)} linhas encontradas.")
             
@@ -67,13 +67,15 @@ if menu == "📥 Upload & Importação":
                     if len(row) < 5:
                         continue
                     
-                    nome_prod = str(row.iloc[2]).strip() if not pd.isna(row.iloc[2]) else ""
+                    # Ignora linhas que sejam cabeçalhos ou vazias
+                    val_col2 = str(row.iloc[2]).strip() if not pd.isna(row.iloc[2]) else ""
+                    if not val_col2 or val_col2.lower() in ["nan", "produto", "item", "kg - alimento", "un - alimento"]:
+                        continue
+                        
+                    nome_prod = val_col2
                     unidade = str(row.iloc[3]).strip() if len(row) > 3 and not pd.isna(row.iloc[3]) else "UN"
                     marca = str(row.iloc[4]).strip() if len(row) > 4 and not pd.isna(row.iloc[4]) else "Geral"
                     
-                    if not nome_prod or nome_prod.lower() == "nan" or nome_prod == "" or "produto" in nome_prod.lower():
-                        continue
-                        
                     unidade_str = unidade if unidade and unidade.lower() != "nan" else "UN"
                     marca_str = marca if marca and marca.lower() != "nan" else "Geral"
                     
