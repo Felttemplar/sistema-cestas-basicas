@@ -10,6 +10,7 @@ def init_db():
     conn = get_connection()
     cursor = conn.cursor()
     
+    # Tabela de Produtos
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS produtos (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -19,6 +20,7 @@ def init_db():
         )
     ''')
     
+    # Tabela de Fornecedores
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS fornecedores (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -27,6 +29,7 @@ def init_db():
         )
     ''')
     
+    # Tabela de Cotações
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS cotacoes (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -39,6 +42,7 @@ def init_db():
         )
     ''')
     
+    # Tabela de Tipos de Cesta
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS tipos_cesta (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -47,6 +51,7 @@ def init_db():
         )
     ''')
     
+    # Tabela de Composição da Cesta
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS composicao_cesta (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -58,6 +63,7 @@ def init_db():
         )
     ''')
     
+    # Tabela de Parâmetros Operacionais
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS parametros (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -66,7 +72,7 @@ def init_db():
         )
     ''')
     
-    # Nova tabela para Registro de Vendas
+    # Tabela de Vendas Atualizada (com Zonas, Vendedores e Tributos)
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS vendas (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -74,6 +80,10 @@ def init_db():
             quantidade_vendida INTEGER NOT NULL,
             preco_unitario_praticado REAL NOT NULL,
             canal_venda TEXT NOT NULL,
+            vendedor TEXT NOT NULL,
+            zona_entrega TEXT NOT NULL,
+            comissao_percentual REAL DEFAULT 0.0,
+            imposto_percentual REAL DEFAULT 0.0,
             data_venda TEXT NOT NULL,
             FOREIGN KEY (tipo_cesta_id) REFERENCES tipos_cesta (id)
         )
@@ -92,16 +102,35 @@ def _seed_default_data():
         cursor.execute("INSERT INTO parametros (chave, valor) VALUES ('custo_embalagem', 3.50)")
         cursor.execute("INSERT INTO parametros (chave, valor) VALUES ('frete_medio', 5.00)")
         cursor.execute("INSERT INTO parametros (chave, valor) VALUES ('margem_lucro_padrao', 25.0)")
+        cursor.execute("INSERT INTO parametros (chave, valor) VALUES ('imposto_padrao', 5.0)")
         
     cestas_padrao = [
-        ("Cesta Básica 14 Itens", "Cesta econômica essencial"),
-        ("Cesta Básica 23 Itens", "Cesta completa familiar"),
-        ("Kit Higiene", "Itens de higiene pessoal"),
-        ("Kit Limpeza", "Itens de limpeza doméstica")
+        ("Cesta Econômica (12-14 Itens)", "Cesta essencial de alimentos"),
+        ("Cesta Família (20-30 Itens)", "Cesta completa familiar"),
+        ("Cesta Turbinada (35-60 Itens)", "Cesta super completa"),
+        ("Kit Higiene", "Essencial de higiene pessoal (7 itens)"),
+        ("Kit Higiene Família", "Kit completo de higiene (12 itens)"),
+        ("Sacola Limpeza 1", "Sacola essencial de limpeza (7 itens)"),
+        ("Sacola Limpeza 2", "Sacola completa de limpeza (15 itens)"),
+        ("Cesta Estudante", "Cesta focada em estudantes (18 itens)"),
+        ("Cesta Natalina", "Cesta sazonal de fim de ano (10-16 itens)"),
+        ("Cesta Natal Feliz", "Cesta premium de Natal (18 itens)")
     ]
     for nome, desc in cestas_padrao:
         cursor.execute("INSERT OR IGNORE INTO tipos_cesta (nome, descricao) VALUES (?, ?)", (nome, desc))
         
+    fornecedores_padrao = [
+        ("Atacadão", "Atacado"),
+        ("Assaí Atacadista", "Atacado"),
+        ("Supermercado Gavião", "Varejo/Atacado"),
+        ("Supermercado Novo Tempo", "Varejo/Atacado"),
+        ("Supermercado Nova Era", "Varejo/Atacado"),
+        ("Supermercado Goiano", "Varejo/Atacado"),
+        ("Distribuidora Local 1", "Distribuidora")
+    ]
+    for nome, tel in fornecedores_padrao:
+        cursor.execute("INSERT OR IGNORE INTO fornecedores (nome, telefone) VALUES (?, ?)", (nome, tel))
+
     conn.commit()
     conn.close()
 
