@@ -1,15 +1,4 @@
-﻿try:
-    import openpyxl
-except ImportError:
-    import subprocess
-    import sys
-    try:
-        subprocess.check_call([sys.executable, "-m", "pip", "install", "--user", "openpyxl"])
-        import openpyxl
-    except Exception:
-        pass
-
-import streamlit as st
+﻿import streamlit as st
 import pandas as pd
 from datetime import datetime
 from core.database import init_db, get_connection
@@ -47,7 +36,8 @@ if menu == "📥 Upload & Importação":
     
     if uploaded_file is not None:
         try:
-            df_up = pd.read_excel(uploaded_file, sheet_name=0)
+            # Leitura robusta utilizando o motor calamine (sem necessidade de openpyxl)
+            df_up = pd.read_excel(uploaded_file, sheet_name=0, engine="calamine")
             st.success(f"Planilha carregada com sucesso! {len(df_up)} linhas encontradas.")
             
             if st.button("🚀 Processar e Alimentar Banco de Dados"):
