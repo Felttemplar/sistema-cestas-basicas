@@ -183,7 +183,7 @@ elif menu == "📦 Gestão de Lotes & Precificação":
                 with cols[1]:
                     qtd_compra = st.number_input(f"Qtd Comprada {i+1}", min_value=0.1, value=10.0, key=f"lote_qtd_{i}")
                 with cols[2]:
-                    custo_unit = st.number_input(f"Custo Unit. {i+1} (R$)", min_value=0.01, value=5.00, key=f"lote_custo_{i}")
+                    custo_unit = st.number_input(f"Custo Unit. {i+1} (R$)", min_value=0.01, value=1.00, key=f"lote_custo_{i}")
                 itens_lote_dados.append((prod_sel, qtd_compra, custo_unit))
                 
             if st.form_submit_button("💾 Salvar Lote no Estoque"):
@@ -205,7 +205,7 @@ elif menu == "📦 Gestão de Lotes & Precificação":
 
 elif menu == "🧩 Montagem de Kits":
     st.header("🧩 Cálculo Automático de Rendimento de Cestas & Precificação")
-    st.markdown("Defina a receita do kit e o sistema calcula instantaneamente o **número máximo de cestas** possíveis com base no estoque do lote.")
+    st.markdown("Defina a receita do kit e ajuste os custos unitários reais caso necessário para o cálculo preciso do rendimento.")
     
     conn = get_connection()
     df_lotes = pd.read_sql_query("SELECT id, nome_lote, custo_total FROM lotes ORDER BY id DESC", conn)
@@ -219,26 +219,28 @@ elif menu == "🧩 Montagem de Kits":
         margem = st.slider("Margem de Lucro Desejada (%)", min_value=0.0, max_value=100.0, value=25.0, step=1.0)
         
         conn = get_connection()
-        # Garante a busca do preco_unitario real salvo na tabela itens_lote
         df_itens = pd.read_sql_query(f"SELECT p.id, (p.nome || ' - ' || p.marca) AS produto, il.quantidade, il.preco_unitario FROM itens_lote il JOIN produtos p ON il.produto_id = p.id WHERE il.lote_id = {lote_escolhido}", conn)
         conn.close()
         
         if not df_itens.empty:
             st.markdown("---")
-            st.subheader("📋 Receita do Kit (Quantidade de cada item por Cesta)")
+            st.subheader("📋 Receita do Kit & Ajuste de Custos Reais")
             
             custo_cesta_unitario = 0.0
             capacidades_maximas = []
             
             for idx, row in df_itens.iterrows():
                 with st.container():
-                    col_p, col_q, col_c = st.columns([3, 2, 2])
+                    col_p, col_c, col_q, col_sub = st.columns([3, 2, 2, 2])
                     with col_p:
-                        st.markdown(f"**{row['produto']}**  \n*(Estoque Lote: {int(row['quantidade'])} un | Custo Unit: R$ {row['preco_unitario']:.2f})*")
+                        st.markdown(f"**{row['produto']}**  \n*(Estoque Lote: {int(row['quantidade'])} un)*")
+                    with col_c:
+                        # Permite ajustar o custo unitário diretamente caso o lote tenha vindo com valor padrão
+                        custo_real_unit = st.number_input(f"Custo Unit. (R$)", min_value=0.01, value=float(row['preco_unitario']), key=f"custo_{idx}_{row['id']}")
                     with col_q:
                         qtd_na_cesta = st.number_input(f"Qtd por Cesta", min_value=0, value=1, key=f"rec_{idx}_{row['id']}")
-                    with col_c:
-                        subtotal_item = qtd_na_cesta * row['preco_unitario']
+                    with col_sub:
+                        subtotal_item = qtd_na_cesta * custo_real_unit
                         st.markdown(f"**Subtotal:**  \nR$ {subtotal_item:.2f}")
                     
                     custo_cesta_unitario += subtotal_item
