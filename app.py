@@ -63,19 +63,29 @@ if menu == "📥 Upload & Importação":
                 }
                 
                 for idx, row in df_up.iterrows():
-                    if len(row) < 5:
+                    if len(row) < 3:
                         continue
                     
+                    # Procura estritamente a célula que contém o nome real do produto
                     nome_prod = ""
                     unidade = "UN"
                     marca = "Geral"
                     
-                    for col_idx in [2, 1, 3]:
+                    # Testa colunas da esquerda para a direita ignorando unidades/categorias conhecidas
+                    for col_idx in [2, 1, 3, 0]:
                         if col_idx < len(row) and not pd.isna(row.iloc[col_idx]):
                             val = str(row.iloc[col_idx]).strip()
                             val_up = val.upper()
-                            if val and val_up not in ["NAN", "NONE", "PRODUTO", "ITEM", "KG", "UN", "LT", "PCT", "UND", "SC", "CX", "ALIMENTO", "LIMPEZA", "HIGIENE", "KG - ALIMENTO", "UN - ALIMENTO"]:
-                                if not any(cat in val_up for cat in ["ALIMENTO", "LIMPEZA", "HIGIENE"]) and len(val) > 1:
+                            
+                            # Lista negra de termos que NÃO podem ser nomes de produtos
+                            termos_proibidos = [
+                                "NAN", "NONE", "PRODUTO", "ITEM", "KG", "UN", "LT", "PCT", 
+                                "UND", "SC", "CX", "FR", "ALIMENTO", "LIMPEZA", "HIGIENE", 
+                                "KG - ALIMENTO", "UN - ALIMENTO", "PC - ALIMENTO", "SC/G - ALIMENTO", "FR - ALIMENTO"
+                            ]
+                            
+                            if val and val_up not in termos_proibidos and not val_up.endswith("- ALIMENTO") and not val_up.endswith("- LIMPEZA"):
+                                if len(val) > 2:
                                     nome_prod = val
                                     break
                     
