@@ -9,144 +9,39 @@ def get_connection():
 def init_db():
     conn = get_connection()
     cursor = conn.cursor()
+    cursor.execute('CREATE TABLE IF NOT EXISTS produtos (id INTEGER PRIMARY KEY AUTOINCREMENT, nome TEXT NOT NULL, marca TEXT DEFAULT '\''Geral'\'', unidade TEXT NOT NULL, grupo_equivalencia TEXT NOT NULL, estoque_atual REAL DEFAULT 100.0, estoque_minimo REAL DEFAULT 10.0)')
+    cursor.execute('CREATE TABLE IF NOT EXISTS fornecedores (id INTEGER PRIMARY KEY AUTOINCREMENT, nome TEXT NOT NULL UNIQUE, telefone TEXT)')
+    cursor.execute('CREATE TABLE IF NOT EXISTS cotacoes (id INTEGER PRIMARY KEY AUTOINCREMENT, produto_id INTEGER NOT NULL, fornecedor_id INTEGER NOT NULL, preco REAL NOT NULL, data_cotacao TEXT NOT NULL, FOREIGN KEY (produto_id) REFERENCES produtos (id), FOREIGN KEY (fornecedor_id) REFERENCES fornecedores (id))')
+    cursor.execute('CREATE TABLE IF NOT EXISTS tipos_cesta (id INTEGER PRIMARY KEY AUTOINCREMENT, nome TEXT NOT NULL UNIQUE, descricao TEXT)')
+    cursor.execute('CREATE TABLE IF NOT EXISTS composicao_cesta (id INTEGER PRIMARY KEY AUTOINCREMENT, tipo_cesta_id INTEGER NOT NULL, produto_id INTEGER NOT NULL, quantidade REAL NOT NULL, FOREIGN KEY (tipo_cesta_id) REFERENCES tipos_cesta (id), FOREIGN KEY (produto_id) REFERENCES produtos (id))')
+    cursor.execute('CREATE TABLE IF NOT EXISTS parametros (id INTEGER PRIMARY KEY AUTOINCREMENT, chave TEXT NOT NULL UNIQUE, valor REAL NOT NULL)')
+    cursor.execute('CREATE TABLE IF NOT EXISTS vendas (id INTEGER PRIMARY KEY AUTOINCREMENT, tipo_cesta_id INTEGER NOT NULL, quantidade_vendida INTEGER NOT NULL, preco_unitario_praticado REAL NOT NULL, canal_venda TEXT NOT NULL, vendedor TEXT DEFAULT '\''Venda Direta'\'', zona_entrega TEXT DEFAULT '\''Zona 1 - Centro'\'', taxa_canal_percentual REAL DEFAULT 0.0, comissao_percentual REAL DEFAULT 0.0, imposto_percentual REAL DEFAULT 5.0, data_venda TEXT NOT NULL, FOREIGN KEY (tipo_cesta_id) REFERENCES tipos_cesta (id))')
     
-    # Tabela de Produtos (com coluna de Estoque Atual)
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS produtos (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            nome TEXT NOT NULL,
-            unidade TEXT NOT NULL,
-            grupo_equivalencia TEXT NOT NULL,
-            estoque_atual REAL DEFAULT 0.0,
-            estoque_minimo REAL DEFAULT 10.0
-        )
-    ''')
-    
-    # Tabela de Fornecedores
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS fornecedores (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            nome TEXT NOT NULL UNIQUE,
-            telefone TEXT
-        )
-    ''')
-    
-    # Tabela de Cotações
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS cotacoes (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            produto_id INTEGER NOT NULL,
-            fornecedor_id INTEGER NOT NULL,
-            preco REAL NOT NULL,
-            data_cotacao TEXT NOT NULL,
-            FOREIGN KEY (produto_id) REFERENCES produtos (id),
-            FOREIGN KEY (fornecedor_id) REFERENCES fornecedores (id)
-        )
-    ''')
-    
-    # Tabela de Tipos de Cesta
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS tipos_cesta (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            nome TEXT NOT NULL UNIQUE,
-            descricao TEXT
-        )
-    ''')
-    
-    # Tabela de Composição da Cesta
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS composicao_cesta (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            tipo_cesta_id INTEGER NOT NULL,
-            produto_id INTEGER NOT NULL,
-            quantidade REAL NOT NULL,
-            FOREIGN KEY (tipo_cesta_id) REFERENCES tipos_cesta (id),
-            FOREIGN KEY (produto_id) REFERENCES produtos (id)
-        )
-    ''')
-    
-    # Tabela de Parâmetros Operacionais
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS parametros (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            chave TEXT NOT NULL UNIQUE,
-            valor REAL NOT NULL
-        )
-    ''')
-    
-    # Tabela de Vendas
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS vendas (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            tipo_cesta_id INTEGER NOT NULL,
-            quantidade_vendida INTEGER NOT NULL,
-            preco_unitario_praticado REAL NOT NULL,
-            canal_venda TEXT NOT NULL,
-            vendedor TEXT DEFAULT 'Venda Direta',
-            zona_entrega TEXT DEFAULT 'Zona 1 - Centro',
-            taxa_canal_percentual REAL DEFAULT 0.0,
-            comissao_percentual REAL DEFAULT 0.0,
-            imposto_percentual REAL DEFAULT 0.0,
-            data_venda TEXT NOT NULL,
-            FOREIGN KEY (tipo_cesta_id) REFERENCES tipos_cesta (id)
-        )
-    ''')
-    
-    # Adicionar colunas caso a tabela ja exista (Migracao)
     cursor.execute("PRAGMA table_info(produtos)")
     p_cols = [c[1] for c in cursor.fetchall()]
-    if 'estoque_atual' not in p_cols:
-        cursor.execute("ALTER TABLE produtos ADD COLUMN estoque_atual REAL DEFAULT 100.0")
-    if 'estoque_minimo' not in p_cols:
-        cursor.execute("ALTER TABLE produtos ADD COLUMN estoque_minimo REAL DEFAULT 10.0")
-
-    cursor.execute("PRAGMA table_info(vendas)")
-    v_cols = [c[1] for c in cursor.fetchall()]
-    if 'taxa_canal_percentual' not in v_cols:
-        cursor.execute("ALTER TABLE vendas ADD COLUMN taxa_canal_percentual REAL DEFAULT 0.0")
-
+    if 'marca' not in p_cols: cursor.execute("ALTER TABLE produtos ADD COLUMN marca TEXT DEFAULT 'Geral'")
+    if 'estoque_atual' not in p_cols: cursor.execute("ALTER TABLE produtos ADD COLUMN estoque_atual REAL DEFAULT 100.0")
+    if 'estoque_minimo' not in p_cols: cursor.execute("ALTER TABLE produtos ADD COLUMN estoque_minimo REAL DEFAULT 10.0")
+    
     conn.commit()
     conn.close()
-    _seed_default_data()
+    _seed_initial_data()
 
-def _seed_default_data():
+def _seed_initial_data():
     conn = get_connection()
     cursor = conn.cursor()
-    
     cursor.execute("SELECT COUNT(*) FROM parametros")
     if cursor.fetchone()[0] == 0:
         cursor.execute("INSERT INTO parametros (chave, valor) VALUES ('custo_embalagem', 3.50)")
         cursor.execute("INSERT INTO parametros (chave, valor) VALUES ('frete_medio', 5.00)")
         cursor.execute("INSERT INTO parametros (chave, valor) VALUES ('margem_lucro_padrao', 25.0)")
         cursor.execute("INSERT INTO parametros (chave, valor) VALUES ('imposto_padrao', 5.0)")
-        
-    cestas_padrao = [
-        ("Cesta Econômica (12-14 Itens)", "Cesta essencial de alimentos"),
-        ("Cesta Família (20-30 Itens)", "Cesta completa familiar"),
-        ("Cesta Turbinada (35-60 Itens)", "Cesta super completa"),
-        ("Kit Higiene", "Essencial de higiene pessoal (7 itens)"),
-        ("Kit Higiene Família", "Kit completo de higiene (12 itens)"),
-        ("Sacola Limpeza 1", "Sacola essencial de limpeza (7 itens)"),
-        ("Sacola Limpeza 2", "Sacola completa de limpeza (15 itens)"),
-        ("Cesta Estudante", "Cesta focada em estudantes (18 itens)"),
-        ("Cesta Natalina", "Cesta sazonal de fim de ano (10-16 itens)"),
-        ("Cesta Natal Feliz", "Cesta premium de Natal (18 itens)")
-    ]
-    for nome, desc in cestas_padrao:
-        cursor.execute("INSERT OR IGNORE INTO tipos_cesta (nome, descricao) VALUES (?, ?)", (nome, desc))
-        
-    fornecedores_padrao = [
-        ("Atacadão", "Atacado"),
-        ("Assaí Atacadista", "Atacado"),
-        ("Supermercado Gavião", "Varejo/Atacado"),
-        ("Supermercado Novo Tempo", "Varejo/Atacado"),
-        ("Supermercado Nova Era", "Varejo/Atacado"),
-        ("Supermercado Goiano", "Varejo/Atacado"),
-        ("Distribuidora Local 1", "Distribuidora")
-    ]
-    for nome, tel in fornecedores_padrao:
-        cursor.execute("INSERT OR IGNORE INTO fornecedores (nome, telefone) VALUES (?, ?)", (nome, tel))
-
+    
+    cestas = [("Cesta Econômica (12-14 Itens)", "Essencial"), ("Cesta Família (20-30 Itens)", "Completa"), ("Cesta Turbinada (35-60 Itens)", "Super"), ("Kit Higiene", "Higiene"), ("Kit Higiene Família", "Higiene Família"), ("Sacola Limpeza 1", "Limpeza 1"), ("Sacola Limpeza 2", "Limpeza 2"), ("Cesta Estudante", "Estudante"), ("Cesta Natalina", "Natalina"), ("Cesta Natal Feliz", "Natal Feliz")]
+    for n, d in cestas: cursor.execute("INSERT OR IGNORE INTO tipos_cesta (nome, descricao) VALUES (?, ?)", (n, d))
+    
+    fornecedores = [("Assaí Atacadista", "Atacado"), ("Atacadão", "Atacado"), ("Supermercado Gavião", "Varejo"), ("Supermercado Novo Tempo", "Varejo"), ("Supermercado Nova Era", "Varejo"), ("Supermercado Goiano", "Varejo"), ("Distribuidora Local 1", "Distribuidora")]
+    for n, t in fornecedores: cursor.execute("INSERT OR IGNORE INTO fornecedores (nome, telefone) VALUES (?, ?)", (n, t))
     conn.commit()
     conn.close()
 
@@ -157,6 +52,3 @@ def deletar_fornecedor(fornecedor_id: int):
     cursor.execute("DELETE FROM fornecedores WHERE id = ?", (fornecedor_id,))
     conn.commit()
     conn.close()
-
-if __name__ == "__main__":
-    init_db()
