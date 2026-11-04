@@ -234,18 +234,17 @@ elif menu == "🧩 Montagem de Kits":
                 with col_rec1:
                     st.write(f"**{row['produto']}** (Estoque no Lote: `{int(row['quantidade'])}` un)")
                 with col_rec2:
-                    qtd_na_cesta = st.number_input(f"Qtd por Cesta", min_value=1, value=1, key=f"rec_{row['id']}")
+                    # Chave única garantida combinando o índice da linha e o ID do produto
+                    qtd_na_cesta = st.number_input(f"Qtd por Cesta {idx}", min_value=1, value=1, key=f"rec_{idx}_{row['id']}")
                 with col_rec3:
                     subtotal_item = qtd_na_cesta * row['preco_unitario']
                     st.write(f"Custo no Kit: **R$ {subtotal_item:.2f}**")
                     
                 custo_cesta_unitario += subtotal_item
                 
-                # Cálculo da capacidade limite por item (Gargalo de Estoque)
-                cap_item = int(row['quantidade'] // qtd_na_cesta)
+                cap_item = int(row['quantidade'] // qtd_na_cesta) if qtd_na_cesta > 0 else 0
                 capacidades_maximas.append(cap_item)
             
-            # O menor valor de capacidade define o total máximo de cestas completas
             max_cestas_possiveis = min(capacidades_maximas) if capacidades_maximas else 0
             preco_venda_sugerido = custo_cesta_unitario * (1 + (margem / 100))
             lucro_unitario = preco_venda_sugerido - custo_cesta_unitario
