@@ -1,7 +1,7 @@
 ﻿import streamlit as st
 import pandas as pd
 import plotly.express as px
-from datetime import datetime
+from datetime import datetime, timedelta
 from core.database import init_db, get_connection, deletar_fornecedor
 from core.engine import calcular_custo_cesta, obter_parametros, salvar_parametro
 
@@ -10,9 +10,8 @@ init_db()
 st.set_page_config(page_title="Gestão Cestas Bom Dia - Boa Vista/RR", page_icon="🛒", layout="wide")
 
 st.title("🛒 Cestas Bom Dia - Sistema de Cotação, Precificação e Vendas")
-st.markdown("Gestão de fornecedores, frete por zonas, comissões, cotações, pedidos e estoque em Boa Vista/RR.")
+st.markdown("Gestão de fornecedores, frete por zonas, comissões, cotações com histórico por data, pedidos e estoque em Boa Vista/RR.")
 
-# Tabela de Taxas dos Canais de Venda
 TAXAS_CANAL = {
     "Online - Instagram": 0.0,
     "Online - Pigz": 10.0,
@@ -26,7 +25,7 @@ st.sidebar.header("Navegação")
 menu = st.sidebar.radio("Ir para:", [
     "📈 Dashboard & Projeções",
     "📦 Gestão & Alerta de Estoque",
-    "📊 Cotações, Histórico & Precificação", 
+    "📊 Cotações, Histórico por Data & Precificação", 
     "🛒 Registro de Pedidos / Vendas",
     "📁 Importar Planilhas (Excel / CSV)",
     "📦 Cadastrar Produtos & Substitutos", 
@@ -64,7 +63,6 @@ if menu == "📈 Dashboard & Projeções":
     if df_vendas.empty:
         st.info("⚠️ Nenhum pedido/venda registrado até o momento. Registre novos pedidos na aba 'Registro de Pedidos / Vendas'.")
     else:
-        # Cálculo de Margem Líquida Real descontando taxas de canal e comissão
         df_vendas['valor_taxa_canal'] = df_vendas['faturamento_total'] * (df_vendas['taxa_canal_percentual'] / 100.0)
         df_vendas['valor_comissao'] = df_vendas['faturamento_total'] * (df_vendas['comissao_percentual'] / 100.0)
         df_vendas['faturamento_liquido'] = df_vendas['faturamento_total'] - df_vendas['valor_taxa_canal'] - df_vendas['valor_comissao']
@@ -81,7 +79,6 @@ if menu == "📈 Dashboard & Projeções":
         k4.metric("🎯 Ticket Médio por Venda", f"R$ {ticket_medio:.2f}")
         
         st.markdown("---")
-        
         c_graf1, c_graf2 = st.columns(2)
         with c_graf1:
             st.subheader("📊 Faturamento por Vendedor")
@@ -109,7 +106,7 @@ if menu == "📈 Dashboard & Projeções":
             st.bar_chart(df_kits.set_index('cesta'))
 
 # ==========================================
-# ABA 1: GESTÃO & ALERTA DE ESTOQUE (SUGESTÃO 1)
+# ABA 1: GESTÃO & ALERTA DE ESTOQUE
 # ==========================================
 elif menu == "📦 Gestão & Alerta de Estoque":
     st.header("📦 Controle de Estoque & Alerta de Ruptura de Insumos")
@@ -122,7 +119,6 @@ elif menu == "📦 Gestão & Alerta de Estoque":
     if df_estoque.empty:
         st.info("Nenhum produto cadastrado.")
     else:
-        # Identifica produtos com risco de ruptura
         df_criticos = df_estoque[df_estoque['estoque_atual'] <= df_estoque['estoque_minimo']]
         
         if not df_criticos.empty:
@@ -151,12 +147,12 @@ elif menu == "📦 Gestão & Alerta de Estoque":
                 st.rerun()
 
 # ==========================================
-# ABA 2: COTAÇÕES, HISTÓRICO & PRECIFICAÇÃO (SUGESTÃO 3)
+# ABA 2: COTAÇÕES, HISTÓRICO POR DATA & PRECIFICAÇÃO
 # ==========================================
-elif menu == "📊 Cotações, Histórico & Precificação":
-    st.header("📊 Análise de Custo, Impostos e Histórico de Preços")
+elif menu == "📊 Cotações, Histórico por Data & Precificação":
+    st.header("📊 Cotações, Análise de Custos & Evolução Temporal de Preços")
     
-    tab_p1, tab_p2 = st.tabs(["🏷️ Precificação de Kits", "📈 Histórico Temporal de Preços (Atacadistas)"])
+    tab_p1, tab_p2 = st.tabs(["🏷️ Precificação de Kits", "📈 Histórico e Variação por Data (Atacadistas)"])
     
     with tab_p1:
         col1, col2, col3, col4 = st.columns(4)
@@ -165,9 +161,9 @@ elif menu == "📊 Cotações, Histórico & Precificação":
         with col2:
             embalagem = st.number_input("Custo Embalagem (R$)", value=float(params.get("custo_embalagem", 3.50)), step=0.50)
         with col3:
-            frete = st.number_input("Frete Médio Rateado (R$)", value=float(params.get("frete_medio", 5.00)), step=0.50)
+            frete = st.number_input("Frete Rateado (R$)", value=float(params.get("frete_medio", 5.00)), step=0.50)
         with col4:
-            imposto = st.number_input("Imposto Estimado - ICMS/CBS (%)", value=float(params.get("imposto_padrao", 5.0)), step=0.5)
+            imposto = st.number_input("Imposto Estimado (%)", value=float(params.get("imposto_padrao", 5.0)), step=0.5)
             
         conn = get_connection()
         tipos_cesta = pd.read_sql_query("SELECT id, nome FROM tipos_cesta", conn)
@@ -182,7 +178,7 @@ elif menu == "📊 Cotações, Histórico & Precificação":
             df_itens, custo_insumos, custo_total, valor_lucro, preco_venda = calcular_custo_cesta(cesta_id, margem, embalagem, frete)
             
             if df_itens.empty:
-                st.info("⚠️ Nenhuma cotação cadastrada para os itens desta cesta ainda. Vá na aba 'Fornecedores & Preços' ou 'Importar Planilhas' para preencher.")
+                st.info("⚠️ Nenhuma cotação cadastrada para os itens desta cesta ainda.")
             else:
                 valor_imposto = preco_venda * (imposto / 100.0)
                 preco_venda_final = preco_venda + valor_imposto
@@ -206,7 +202,9 @@ elif menu == "📊 Cotações, Histórico & Precificação":
                 }), use_container_width=True)
 
     with tab_p2:
-        st.subheader("📈 Inteligência de Mercado: Histórico de Variação de Preço nos Atacadistas")
+        st.subheader("📈 Evolução Cronológica e Variação de Preços por Atacadista")
+        st.markdown("Acompanhe como o preço de cada produto oscilou ao longo das diferentes datas de registro e cotação.")
+        
         conn = get_connection()
         df_hist = pd.read_sql_query('''
             SELECT c.data_cotacao, p.nome AS produto, f.nome AS atacadista, c.preco
@@ -218,22 +216,27 @@ elif menu == "📊 Cotações, Histórico & Precificação":
         conn.close()
         
         if df_hist.empty:
-            st.info("Nenhuma cotação cadastrada para exibir o histórico.")
+            st.info("Nenhuma cotação com data registrada encontrada.")
         else:
-            prod_filtro = st.selectbox("Selecione o produto para analisar a oscilação:", df_hist['produto'].unique())
+            prod_filtro = st.selectbox("Selecione o produto para análise temporal:", df_hist['produto'].unique())
             df_prod_hist = df_hist[df_hist['produto'] == prod_filtro]
             
+            # Gráfico de Linhas Temporal por Atacadista
             fig_hist = px.line(df_prod_hist, x='data_cotacao', y='preco', color='atacadista', markers=True,
-                               title=f"Evolução do Preço do Item: {prod_filtro} (R$)",
+                               title=f"Histórico de Preços por Data - {prod_filtro} (R$)",
                                labels={'data_cotacao':'Data da Cotação', 'preco':'Preço Unitário (R$)', 'atacadista':'Atacadista'})
             st.plotly_chart(fig_hist, use_container_width=True)
+            
+            st.markdown("---")
+            st.subheader("📋 Tabela Detalhada de Cotações com Datas")
+            st.dataframe(df_prod_hist.sort_values(by='data_cotacao', ascending=False).style.format({'preco': 'R$ {:.2f}'}), use_container_width=True)
 
 # ==========================================
-# ABA 3: REGISTRO DE PEDIDOS / VENDAS (SUGESTÕES 2 E 4)
+# ABA 3: REGISTRO DE PEDIDOS / VENDAS
 # ==========================================
 elif menu == "🛒 Registro de Pedidos / Vendas":
-    st.header("🛒 Registro de Pedidos & Geração de Orçamento em PDF")
-    st.markdown("Registre novos pedidos especificando a **Zona de Boa Vista**, o **Vendedor** e o **Canal de Venda** (descontando automaticamente do estoque).")
+    st.header("🛒 Registro de Pedidos & Baixa de Estoque")
+    st.markdown("Registre novos pedidos especificando a **Zona de Boa Vista**, o **Vendedor** e o **Canal de Venda**.")
     
     conn = get_connection()
     tipos_cesta = pd.read_sql_query("SELECT id, nome FROM tipos_cesta", conn)
@@ -273,13 +276,11 @@ elif menu == "🛒 Registro de Pedidos / Vendas":
                 conn = get_connection()
                 cursor = conn.cursor()
                 
-                # Salvar Venda
                 cursor.execute('''
                     INSERT INTO vendas (tipo_cesta_id, quantidade_vendida, preco_unitario_praticado, canal_venda, vendedor, zona_entrega, taxa_canal_percentual, comissao_percentual, data_venda)
                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ''', (cesta_id_venda, qtd_vendida, preco_praticado, canal, vendedor, zona, taxa_canal, comissao_perc, data_atual))
                 
-                # Baixa Automatica de Estoque dos Insumos
                 cursor.execute('''
                     SELECT cc.produto_id, cc.quantidade
                     FROM composicao_cesta cc
@@ -329,7 +330,7 @@ elif menu == "🛒 Registro de Pedidos / Vendas":
 # ==========================================
 elif menu == "📁 Importar Planilhas (Excel / CSV)":
     st.header("📁 Importação de Cotações via Excel / Google Sheets")
-    st.markdown("Faça o upload do arquivo .xlsx preenchido para atualizar os preços dos atacadistas no sistema.")
+    st.markdown("Faça o upload do arquivo .xlsx preenchido para atualizar os preços dos atacadistas no sistema com a **data atual do registro**.")
     
     file_upload = st.file_uploader("Selecione o arquivo Excel de Cotação", type=["xlsx", "xls", "csv"])
     
@@ -343,12 +344,14 @@ elif menu == "📁 Importar Planilhas (Excel / CSV)":
             st.subheader("Pré-visualização dos Dados Carregados:")
             st.dataframe(df_upload.head(10), use_container_width=True)
             
+            data_cotacao_input = st.date_input("Data de Referência desta Cotação", value=datetime.now())
+            
             if st.button("🚀 Processar e Atualizar Cotações no Banco de Dados"):
                 conn = get_connection()
                 cursor = conn.cursor()
                 
                 count_cot = 0
-                data_hoje = datetime.now().strftime("%Y-%m-%d")
+                data_str = data_cotacao_input.strftime("%Y-%m-%d")
                 cols_fornec = [c for c in df_upload.columns if c not in ["ID Produto", "Produto / Item", "Unidade", "Grupo / Categoria"]]
                 
                 for index, row in df_upload.iterrows():
@@ -378,17 +381,17 @@ elif menu == "📁 Importar Planilhas (Excel / CSV)":
                                     f_id = res_f[0]
                                 else:
                                     cursor.execute("INSERT INTO fornecedores (nome, telefone) VALUES (?, ?)", (f_nome, "Atacado"))
-                                    f_id = cursor.lastrowid
+                                    f_id = lastrowid if 'lastrowid' in locals() else cursor.lastrowid
                                     
                                 cursor.execute("INSERT INTO cotacoes (produto_id, fornecedor_id, preco, data_cotacao) VALUES (?, ?, ?, ?)",
-                                               (prod_id, f_id, preco_float, data_hoje))
+                                               (prod_id, f_id, preco_float, data_str))
                                 count_cot += 1
                             except ValueError:
                                 pass
                                 
                 conn.commit()
                 conn.close()
-                st.success(f"Sucesso! {count_cot} cotações atualizadas no banco de dados!")
+                st.success(f"Sucesso! {count_cot} cotações registradas com a data {data_str}!")
                 st.rerun()
         except Exception as e:
             st.error(f"Erro ao ler o arquivo: {e}")
@@ -498,17 +501,18 @@ elif menu == "🏭 Fornecedores & Preços":
                 p_id = st.selectbox("Produto", prods['id'], format_func=lambda x: prods[prods['id'] == x]['nome'].values[0])
                 f_id = st.selectbox("Atacadista / Fornecedor", fornecs['id'], format_func=lambda x: fornecs[fornecs['id'] == x]['nome'].values[0])
                 preco = st.number_input("Preço Unitário Ofertado (R$)", min_value=0.01, step=0.10)
+                data_cot = st.date_input("Data da Cotação", value=datetime.now())
                 btn_c = st.form_submit_button("Salvar Cotação")
                 
                 if btn_c:
-                    data_hoje = datetime.now().strftime("%Y-%m-%d")
+                    data_str = data_cot.strftime("%Y-%m-%d")
                     conn = get_connection()
                     cursor = conn.cursor()
                     cursor.execute("INSERT INTO cotacoes (produto_id, fornecedor_id, preco, data_cotacao) VALUES (?, ?, ?, ?)",
-                                   (p_id, f_id, preco, data_hoje))
+                                   (p_id, f_id, preco, data_str))
                     conn.commit()
                     conn.close()
-                    st.success("Cotação salva com sucesso!")
+                    st.success(f"Cotação salva com data {data_str}!")
                     st.rerun()
                     
             st.markdown("---")
