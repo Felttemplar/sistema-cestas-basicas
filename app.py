@@ -18,7 +18,7 @@ menu = st.sidebar.radio("Navegabilidade:", [
 
 if menu == "📥 Upload & Importação":
     st.header("📥 Importação Automatizada via Planilha Padrão")
-    st.markdown("Faça o upload da planilha padronizada (`Cestas_Bom_Dia_Template_Upload.xlsx`) para atualizar instantaneamente todos os produtos, marcas e cotações dos atacadistas no sistema.")
+    st.markdown("Faça o upload da planilha padronizada para atualizar produtos e cotações.")
     
     try:
         with open("Cestas_Bom_Dia_Template_Upload.xlsx", "rb") as f:
@@ -39,12 +39,13 @@ if menu == "📥 Upload & Importação":
             df_up = pd.read_excel(uploaded_file, sheet_name=0, engine="calamine")
             st.success(f"Planilha carregada com sucesso! {len(df_up)} linhas encontradas.")
             
-            if st.button("🚀 Processar e Alimentar Banco de Dados"):
+            if st.button("🚀 Processar e Alimentar Banco de Dados (Limpeza Total e Recarga)"):
                 conn = get_connection()
                 cursor = conn.cursor()
                 
-                # Limpa dados antigos para evitar duplicados corrompidos
+                # Zera as tabelas para remover o lixo de importações anteriores com colunas trocadas
                 cursor.execute("DELETE FROM cotacoes")
+                cursor.execute("DELETE FROM itens_lote")
                 cursor.execute("DELETE FROM produtos")
                 conn.commit()
                 
@@ -57,21 +58,21 @@ if menu == "📥 Upload & Importação":
                 ]
                 
                 for idx, row in df_up.iterrows():
+                    # Leitura estrita baseada exclusivamente nos nomes das colunas do Excel
                     try:
-                        # Mapeamento estrito pelas colunas reais da planilha padrão
-                        nome_prod = str(row.get("Produto", "")).strip()
-                        unidade = str(row.get("Unidade", "UN")).strip()
-                        marca = str(row.get("Marca", "Geral")).strip()
+                        nome_prod = str(row["Produto"]).strip() if "Produto" in df_up.columns and not pd.isna(row["Produto"]) else ""
+                        unidade = str(row["Unidade"]).strip() if "Unidade" in df_up.columns and not pd.isna(row["Unidade"]) else "UN"
+                        marca = str(row["Marca"]).strip() if "Marca" in df_up.columns and not pd.isna(row["Marca"]) else "Geral"
                     except Exception:
                         continue
                         
-                    if not nome_prod or nome_prod.lower() == "nan" or nome_prod == "":
+                    if not nome_prod or nome_prod.lower() == "nan" or nome_prod == "" or "unidade" in nome_prod.lower() or "categoria" in nome_prod.lower():
                         continue
                         
                     unidade_str = unidade if unidade and unidade.lower() != "nan" else "UN"
                     marca_str = marca if marca and marca.lower() != "nan" else "Geral"
                     
-                    # Insere o produto correto
+                    # Insere o produto limpo e correto
                     cursor.execute(
                         "INSERT INTO produtos (nome, marca, unidade, grupo_equivalencia) VALUES (?, ?, ?, ?)",
                         (nome_prod, marca_str, unidade_str, nome_prod)
@@ -85,7 +86,7 @@ if menu == "📥 Upload & Importação":
                         continue
                     produto_db_id = p_res[0]
                     
-                    # Insere as cotações para cada atacadista
+                    # Insere as cotações correspondentes
                     for atac_nome in atacadistas_lista:
                         if atac_nome in df_up.columns:
                             preco_val = row[atac_nome]
@@ -101,7 +102,7 @@ if menu == "📥 Upload & Importação":
                                     count_cots += 1
                 conn.commit()
                 conn.close()
-                st.success(f"✅ Importação concluída! {count_prods} produtos e {count_cots} cotações atualizados no sistema.")
+                st.success(f"✅ Importação limpa concluída! {count_prods} produtos e {count_cots} cotações atualizados no sistema.")
         except Exception as e:
             st.error(f"Erro ao processar a planilha: {e}")
 
@@ -150,7 +151,7 @@ elif menu == "📊 Cotações & Histórico":
     if not df.empty: 
         st.dataframe(df, use_container_width=True)
     else:
-        st.info("Nenhuma cotação registada ou base de dados vazia.")
+        st.info("Nenhuma cotação registada.")
 
 elif menu == "📦 Gestão de Lotes & Precificação":
     st.header("📦 Controle de Lotes de Compra & Custos Fechados")
