@@ -39,11 +39,13 @@ if menu == "📥 Upload & Importação":
             df_up = pd.read_excel(uploaded_file, sheet_name=0, engine="calamine")
             st.success(f"Planilha carregada com sucesso! {len(df_up)} linhas encontradas.")
             
+            # Normaliza os nomes das colunas para minúsculas para evitar erros de case-sensitive
+            df_up.columns = [str(c).strip().lower() for c in df_up.columns]
+            
             if st.button("🚀 Processar e Alimentar Banco de Dados (Limpeza Total e Recarga)"):
                 conn = get_connection()
                 cursor = conn.cursor()
                 
-                # Zera as tabelas para remover o lixo de importações anteriores com colunas trocadas
                 cursor.execute("DELETE FROM cotacoes")
                 cursor.execute("DELETE FROM itens_lote")
                 cursor.execute("DELETE FROM produtos")
@@ -53,16 +55,16 @@ if menu == "📥 Upload & Importação":
                 count_cots = 0
                 
                 atacadistas_lista = [
-                    "Assaí Atacadista", "Atacadão", "Supermercado Gavião", 
-                    "Novo Tempo", "Nova Era", "Goiano", "Aguiar", "Distribuidora 1"
+                    "assaí atacadista", "atacadão", "supermercado gavião", 
+                    "novo tempo", "nova era", "goiano", "aguiar", "distribuidora 1"
                 ]
                 
                 for idx, row in df_up.iterrows():
-                    # Leitura estrita baseada exclusivamente nos nomes das colunas do Excel
                     try:
-                        nome_prod = str(row["Produto"]).strip() if "Produto" in df_up.columns and not pd.isna(row["Produto"]) else ""
-                        unidade = str(row["Unidade"]).strip() if "Unidade" in df_up.columns and not pd.isna(row["Unidade"]) else "UN"
-                        marca = str(row["Marca"]).strip() if "Marca" in df_up.columns and not pd.isna(row["Marca"]) else "Geral"
+                        # Busca flexível por colunas normalizadas
+                        nome_prod = str(row.get("produto", row.get("item", ""))).strip()
+                        unidade = str(row.get("unidade", "UN")).strip()
+                        marca = str(row.get("marca", "Geral")).strip()
                     except Exception:
                         continue
                         
@@ -72,26 +74,29 @@ if menu == "📥 Upload & Importação":
                     unidade_str = unidade if unidade and unidade.lower() != "nan" else "UN"
                     marca_str = marca if marca and marca.lower() != "nan" else "Geral"
                     
-                    # Insere o produto limpo e correto
                     cursor.execute(
                         "INSERT INTO produtos (nome, marca, unidade, grupo_equivalencia) VALUES (?, ?, ?, ?)",
-                        (nome_prod, marca_str, unidade_str, nome_prod)
+                        (nome_prod.upper(), marca_str.upper(), unidade_str.upper(), nome_prod.upper())
                     )
                     conn.commit()
                     count_prods += 1
                     
-                    cursor.execute("SELECT id FROM produtos WHERE nome = ? AND marca = ?", (nome_prod, marca_str))
+                    cursor.execute("SELECT id FROM produtos WHERE nome = ? AND marca = ?", (nome_prod.upper(), marca_str.upper()))
                     p_res = cursor.fetchone()
                     if not p_res:
                         continue
                     produto_db_id = p_res[0]
                     
-                    # Insere as cotações correspondentes
-                    for atac_nome in atacadistas_lista:
-                        if atac_nome in df_up.columns:
-                            preco_val = row[atac_nome]
+                    for atac_col in atacadistas_lista:
+                        if atac_col in df_up.columns:
+                            preco_val = row[atac_col]
                             if not pd.isna(preco_val) and isinstance(preco_val, (int, float)) and preco_val > 0:
-                                cursor.execute("SELECT id FROM fornecedores WHERE nome = ?", (atac_nome,))
+                                # Mapeia nome formatado do atacadista
+                                atac_nome_real = atac_col.title()
+                                if atac_col == "assaí atacadista": atac_nome_real = "Assaí Atacadista"
+                                if atac_col == "atacadão": atac_nome_real = "Atacadão"
+                                
+                                cursor.execute("SELECT id FROM fornecedores WHERE LOWER(nome) = ?", (atac_col,))
                                 f_res = cursor.fetchone()
                                 if f_res:
                                     forn_id = f_res[0]
@@ -102,7 +107,7 @@ if menu == "📥 Upload & Importação":
                                     count_cots += 1
                 conn.commit()
                 conn.close()
-                st.success(f"✅ Importação limpa concluída! {count_prods} produtos e {count_cots} cotações atualizados no sistema.")
+                st.success(f"✅ Importação concluída! {count_prods} produtos e {count_cots} cotações atualizados no sistema.")
         except Exception as e:
             st.error(f"Erro ao processar a planilha: {e}")
 
