@@ -72,7 +72,7 @@ def init_db():
         )
     ''')
     
-    # Tabela de Vendas Atualizada (com Zonas, Vendedores e Tributos)
+    # Tabela de Vendas
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS vendas (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -80,8 +80,8 @@ def init_db():
             quantidade_vendida INTEGER NOT NULL,
             preco_unitario_praticado REAL NOT NULL,
             canal_venda TEXT NOT NULL,
-            vendedor TEXT NOT NULL,
-            zona_entrega TEXT NOT NULL,
+            vendedor TEXT DEFAULT 'Venda Direta',
+            zona_entrega TEXT DEFAULT 'Zona 1 - Centro',
             comissao_percentual REAL DEFAULT 0.0,
             imposto_percentual REAL DEFAULT 0.0,
             data_venda TEXT NOT NULL,
@@ -89,6 +89,19 @@ def init_db():
         )
     ''')
     
+    # Migração / Adaptação de tabelas legadas (Adiciona colunas que faltarem)
+    cursor.execute("PRAGMA table_info(vendas)")
+    columns = [column[1] for column in cursor.fetchall()]
+    
+    if 'vendedor' not in columns:
+        cursor.execute("ALTER TABLE vendas ADD COLUMN vendedor TEXT DEFAULT 'Venda Direta'")
+    if 'zona_entrega' not in columns:
+        cursor.execute("ALTER TABLE vendas ADD COLUMN zona_entrega TEXT DEFAULT 'Zona 1 - Centro'")
+    if 'comissao_percentual' not in columns:
+        cursor.execute("ALTER TABLE vendas ADD COLUMN comissao_percentual REAL DEFAULT 0.0")
+    if 'imposto_percentual' not in columns:
+        cursor.execute("ALTER TABLE vendas ADD COLUMN imposto_percentual REAL DEFAULT 0.0")
+
     conn.commit()
     conn.close()
     _seed_default_data()
