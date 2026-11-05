@@ -3,7 +3,7 @@ import pandas as pd
 from datetime import datetime
 from contextlib import closing
 from core.database import init_db, get_connection
-from core.importacao import importar_cotacoes, normalizar_unidade, normalizar_nome_produto
+from core.importacao import importar_cotacoes, ler_planilha_cotacoes, normalizar_unidade, normalizar_nome_produto
 from core.operations import (criar_fornecedor, registrar_cotacao, salvar_lote_compra, salvar_receita, obter_planejamento_montagem, montar_cestas, obter_resumo_cestas, registrar_venda)
 import io
 
@@ -214,15 +214,20 @@ elif menu == "Importar planilha":
 
     if uploaded_file is not None:
         try:
-            df_up = pd.read_excel(uploaded_file, sheet_name=0, engine="openpyxl")
-            st.success(f"Planilha carregada: {len(df_up)} linhas para conferência.")
+            df_up = ler_planilha_cotacoes(uploaded_file)
+            st.success(f"Planilha reconhecida: {len(df_up)} produtos/linhas para conferência. Aba: {df_up.attrs.get('aba_origem', 'primeira aba')}")
             st.dataframe(df_up.head(30), width="stretch")
-            st.caption("A importação preserva cotações antigas. Se houver uma cotação do mesmo produto e loja na mesma data, ela será atualizada.")
+            st.caption("A importação usa os preços de cada mercado, mantém a marca ofertada e recalcula a menor oferta. Não importa a coluna de resultado da planilha nem preços de cestas prontas na lista de itens para compra. Cotações antigas são preservadas; produto/loja/data repetidos são atualizados.")
+            if "Data Cotação" not in df_up.columns and "Data" not in df_up.columns and "Data da Cotação" not in df_up.columns:
+                st.warning("Esta aba não traz a data da pesquisa. Informe a data real da cotação para não registrar preços antigos como atuais.")
+            data_referencia = st.date_input("Data de referência da cotação", value=datetime.now().date())
             if st.button("🚀 Validar e salvar cotações", type="primary"):
-                resultado = importar_cotacoes(df_up)
+                resultado = importar_cotacoes(df_up, data_cotacao=data_referencia.isoformat())
                 st.success(
-                    f"Importação concluída: {resultado['produtos']} produtos conferidos e "
-                    f"{resultado['cotacoes']} cotações salvas em {resultado['data']}."
+                    f"Importação concluída em {resultado['data']}: {resultado['produtos']} produtos conferidos "
+                    f"({resultado['produtos_novos']} novos), {resultado['cotacoes']} ofertas processadas "
+                    f"({resultado['cotacoes_novas']} novas e {resultado['cotacoes_atualizadas']} atualizadas); "
+                    f"{resultado['cotacoes_excluidas']} preços de cestas prontas separados do fluxo de compras."
                 )
         except Exception as e:
             st.error(f"A planilha não foi importada: {e}")
@@ -338,6 +343,7 @@ elif menu == "Cotações e fornecedores":
         JOIN produtos p ON r.produto_id = p.id
         JOIN fornecedores f ON r.fornecedor_id = f.id
         WHERE r.ordem_fornecedor = 1
+          AND upper(trim(p.nome)) NOT LIKE 'CESTA %'
         ORDER BY p.nome, r.preco, f.nome
     """, conn)
     conn.close()
@@ -452,6 +458,7 @@ elif menu == "Compras e lotes":
         JOIN produtos p ON r.produto_id = p.id
         JOIN fornecedores f ON r.fornecedor_id = f.id
         WHERE r.ordem_fornecedor = 1
+          AND upper(trim(p.nome)) NOT LIKE 'CESTA %'
         ORDER BY p.nome, r.preco, f.nome
     """, conn)
     conn.close()

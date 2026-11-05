@@ -41,6 +41,72 @@ def _achar_coluna(colunas, *nomes):
     return None
 
 
+def ler_planilha_cotacoes(arquivo):
+    """Lê o modelo tabular do app ou a aba legada CONCORRENTES COTAÇÃO.
+
+    Na planilha legada, nomes dos mercados estão na linha 6 e os dados começam
+    na linha 7. Colunas de preço da cesta recomendada não são tratadas como
+    cotações de item.
+    """
+    xls = pd.ExcelFile(arquivo, engine="openpyxl")
+    aba = next((
+        nome for nome in xls.sheet_names
+        if "concorrentes" in _normalizar(nome) and "cotacao" in _normalizar(nome)
+    ), xls.sheet_names[0])
+    bruto = pd.read_excel(xls, sheet_name=aba, header=None, dtype=object)
+
+    linha_cabecalho = None
+    col_produto = col_unidade = None
+    for idx in range(min(30, len(bruto))):
+        mapa = {_normalizar(valor): col for col, valor in bruto.iloc[idx].items() if not pd.isna(valor)}
+        col_produto = mapa.get("produtos", mapa.get("produto"))
+        col_unidade = mapa.get("und", mapa.get("unidade"))
+        if col_produto is not None:
+            linha_cabecalho = idx
+            break
+
+    if linha_cabecalho is None:
+        return pd.read_excel(xls, sheet_name=aba, engine="openpyxl")
+
+    cabecalho = bruto.iloc[linha_cabecalho]
+    col_marca_base = next((c for c, v in cabecalho.items() if _normalizar(v) == "marca"), None)
+    excluidas = {"alimentos", "produto", "produtos", "und", "unidade", "marca", "cotacao"}
+    colunas_fornecedor = []
+    for col, valor in cabecalho.items():
+        nome = str(valor).strip() if not pd.isna(valor) else ""
+        if col <= col_produto or not nome or _normalizar(nome) in excluidas:
+            continue
+        # Colunas identificadas como loja na linha de cabeçalho; a coluna
+        # imediatamente anterior só é marca quando seu cabeçalho diz MARCA.
+        marca_col = col - 1 if col > 0 and _normalizar(cabecalho.iloc[col - 1]) == "marca" else None
+        colunas_fornecedor.append((col, nome, marca_col))
+
+    if not colunas_fornecedor:
+        raise ValueError(f"A aba '{aba}' tem a coluna de produto, mas não encontrei colunas de fornecedores.")
+
+    registros = []
+    for idx in range(linha_cabecalho + 1, len(bruto)):
+        nome_produto = bruto.iat[idx, col_produto]
+        if pd.isna(nome_produto) or not str(nome_produto).strip():
+            continue
+        registro = {
+            "Nome do Produto": str(nome_produto).strip(),
+            "Unidade": bruto.iat[idx, col_unidade] if col_unidade is not None else None,
+            "Marca": bruto.iat[idx, col_marca_base] if col_marca_base is not None else None,
+            "Origem": f"{aba.strip()} — linha {idx + 1}",
+        }
+        for preco_col, fornecedor, marca_col in colunas_fornecedor:
+            registro[f"Preço {fornecedor}"] = bruto.iat[idx, preco_col]
+            if marca_col is not None:
+                registro[f"Marca {fornecedor}"] = bruto.iat[idx, marca_col]
+        registros.append(registro)
+
+    df = pd.DataFrame(registros)
+    df.attrs["aba_origem"] = aba
+    df.attrs["cabecalho_linha"] = linha_cabecalho + 1
+    return df
+
+
 def _preco(valor):
     if pd.isna(valor) or str(valor).strip() == "":
         return None
@@ -111,6 +177,7 @@ def importar_cotacoes(df, data_cotacao=None):
     hoje = data_cotacao or date.today().isoformat()
     linhas = []
     erros = []
+    cotacoes_excluidas = 0
     chaves_oferta = set()
     for numero, (_, row) in enumerate(df.iterrows(), start=2):
         nome = "" if pd.isna(row[col_produto]) else str(row[col_produto]).strip()
@@ -151,6 +218,9 @@ def importar_cotacoes(df, data_cotacao=None):
                 marca = "" if not col_marca or pd.isna(row[col_marca]) else str(row[col_marca]).strip()
                 ofertas.append((fornecedor, marca or marca_geral or None, preco, origem, data_linha))
 
+        if normalizar_nome_produto(nome).startswith("cesta"):
+            cotacoes_excluidas += len(ofertas)
+            ofertas = []
         for fornecedor, marca, preco, _, data_item in ofertas:
             chave = (normalizar_nome_produto(nome), unidade, normalizar_fornecedor(fornecedor), data_item)
             if chave in chaves_oferta:
@@ -164,7 +234,10 @@ def importar_cotacoes(df, data_cotacao=None):
         raise ValueError("Nenhum produto válido foi encontrado na planilha.")
 
     produtos_conferidos = 0
+    produtos_novos = 0
     cotacoes_salvas = 0
+    cotacoes_novas = 0
+    cotacoes_atualizadas = 0
     with closing(get_connection()) as conn, conn:
         cursor = conn.cursor()
         produtos_existentes = cursor.execute("SELECT id, nome, unidade FROM produtos").fetchall()
@@ -189,6 +262,7 @@ def importar_cotacoes(df, data_cotacao=None):
                 )
                 produto_id = cursor.lastrowid
                 produtos_existentes.append({"id": produto_id, "nome": nome, "unidade": unidade})
+                produtos_novos += 1
             produtos_conferidos += 1
 
             for fornecedor, marca, preco, origem, data_item in ofertas:
@@ -216,11 +290,30 @@ def importar_cotacoes(df, data_cotacao=None):
                         "UPDATE cotacoes SET preco = ?, marca = ?, origem = ? WHERE id = ?",
                         (preco, marca, origem or None, existente["id"]),
                     )
+                    cotacoes_atualizadas += 1
                 else:
                     cursor.execute(
                         "INSERT INTO cotacoes (produto_id, fornecedor_id, preco, data_cotacao, marca, origem) VALUES (?, ?, ?, ?, ?, ?)",
                         (produto_id, fornecedor_id, preco, data_item, marca, origem or None),
                     )
+                    cotacoes_novas += 1
                 cotacoes_salvas += 1
 
-    return {"produtos": produtos_conferidos, "cotacoes": cotacoes_salvas, "data": data_cotacao or "datas da planilha"}
+    datas = sorted({oferta[4] for _, _, _, ofertas in linhas for oferta in ofertas})
+    if data_cotacao is not None:
+        data_resultado = data_cotacao.isoformat() if hasattr(data_cotacao, "isoformat") else str(data_cotacao)
+    elif len(datas) == 1:
+        data_resultado = datas[0]
+    elif datas:
+        data_resultado = f"{datas[0]} a {datas[-1]}"
+    else:
+        data_resultado = "nenhuma cotação com preço"
+    return {
+        "produtos": produtos_conferidos,
+        "produtos_novos": produtos_novos,
+        "cotacoes": cotacoes_salvas,
+        "cotacoes_novas": cotacoes_novas,
+        "cotacoes_atualizadas": cotacoes_atualizadas,
+        "cotacoes_excluidas": cotacoes_excluidas,
+        "data": data_resultado,
+    }
