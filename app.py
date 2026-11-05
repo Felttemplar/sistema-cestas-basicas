@@ -1,64 +1,83 @@
-﻿import streamlit as st
+import streamlit as st
 import pandas as pd
 from datetime import datetime
+from contextlib import closing
 from core.database import init_db, get_connection
+from core.importacao import importar_cotacoes, normalizar_unidade, normalizar_nome_produto
+from core.operations import (criar_fornecedor, registrar_cotacao, salvar_lote_compra, salvar_receita, obter_planejamento_montagem, montar_cestas, obter_resumo_cestas, registrar_venda)
 import io
 
 init_db()
 st.set_page_config(page_title="Cestas Bom Dia - Boa Vista", page_icon="🛒", layout="wide")
 st.title("🛒 Cestas Bom Dia - Gestão Operacional & Lotes")
 
-# Dados padronizados oficiais com os 43 produtos e preços do Assaí e Atacadão
-dados_completos = [
-    {"Nome do Produto": "ARROZ 1KG", "Unidade": "KG", "Marca": "PRATO CHIC", "Preço Assaí": 3.39, "Preço Atacadão": 4.49},
-    {"Nome do Produto": "FEIJÃO 1KG", "Unidade": "KG", "Marca": "KICALDO", "Preço Assaí": 5.62, "Preço Atacadão": 5.69},
-    {"Nome do Produto": "AÇUCAR 1KG", "Unidade": "KG", "Marca": "CRISTAL SONORA", "Preço Assaí": 2.79, "Preço Atacadão": 3.35},
-    {"Nome do Produto": "FARINHA", "Unidade": "UN", "Marca": "MANDIOCA DONA", "Preço Assaí": None, "Preço Atacadão": 4.29},
-    {"Nome do Produto": "TRIGO 1KG", "Unidade": "KG", "Marca": "TRIGOLAR", "Preço Assaí": 4.70, "Preço Atacadão": 4.69},
-    {"Nome do Produto": "OLEO 900ML", "Unidade": "FR", "Marca": "SERRA VERDE", "Preço Assaí": 7.49, "Preço Atacadão": 6.95},
-    {"Nome do Produto": "SAL 1KG", "Unidade": "KG", "Marca": "FELICIA", "Preço Assaí": 2.25, "Preço Atacadão": 1.79},
-    {"Nome do Produto": "MACARRÃO ESPAG. 400G", "Unidade": "PC", "Marca": "BOM SABOR", "Preço Assaí": 1.89, "Preço Atacadão": 2.09},
-    {"Nome do Produto": "MOLHO TOMATE SC300G", "Unidade": "SC/G", "Marca": "BONARE", "Preço Assaí": 1.59, "Preço Atacadão": 1.59},
-    {"Nome do Produto": "VINAGRE 500ML", "Unidade": "FR", "Marca": "VIRROSAS", "Preço Assaí": 3.19, "Preço Atacadão": 2.59},
-    {"Nome do Produto": "CAFE 250GR", "Unidade": "PC", "Marca": "PILÃO", "Preço Assaí": 8.09, "Preço Atacadão": 9.99},
-    {"Nome do Produto": "SARDINHA 125G", "Unidade": "LT", "Marca": "PALMEIRA", "Preço Assaí": 4.89, "Preço Atacadão": 5.59},
-    {"Nome do Produto": "BOLACHA DOCE RECHEADA 80G", "Unidade": "PC", "Marca": "TRIGOLINO", "Preço Assaí": 1.69, "Preço Atacadão": 1.39},
-    {"Nome do Produto": "BISCOITO SALGADO CREMCKER 300G", "Unidade": "PC", "Marca": "RACHEIRO", "Preço Assaí": 2.99, "Preço Atacadão": 3.99},
-    {"Nome do Produto": "COMPOSTO LACTEO 400G", "Unidade": "PC", "Marca": "PURIBON", "Preço Assaí": 8.39, "Preço Atacadão": 11.89},
-    {"Nome do Produto": "MIOJO 74G DVS SABOR", "Unidade": "UND", "Marca": "NOSSO SABOR LAMEN", "Preço Assaí": 1.23, "Preço Atacadão": 1.49},
-    {"Nome do Produto": "FLOCÃO 500GR", "Unidade": "G", "Marca": "LIVRE FLOCOS", "Preço Assaí": 3.89, "Preço Atacadão": 3.89},
-    {"Nome do Produto": "SELETA LEGUMES 170G", "Unidade": "LT", "Marca": "PREDILECTA", "Preço Assaí": 2.79, "Preço Atacadão": 3.29},
-    {"Nome do Produto": "ACHOCOLATADO 200GR", "Unidade": "PC", "Marca": "APITI POWER", "Preço Assaí": 4.30, "Preço Atacadão": 4.65},
-    {"Nome do Produto": "BISCOITO ROSQUINHA DOCE 300G", "Unidade": "PC", "Marca": "TRIGOLINO", "Preço Assaí": 4.29, "Preço Atacadão": 3.69},
-    {"Nome do Produto": "MARGARINA 250G", "Unidade": "UND", "Marca": "PRIMOR", "Preço Assaí": 2.95, "Preço Atacadão": 3.29},
-    {"Nome do Produto": "MARGARINA 500G", "Unidade": "UND", "Marca": "PRIMOR", "Preço Assaí": 4.99, "Preço Atacadão": 6.00},
-    {"Nome do Produto": "PÃO FORMA 450G", "Unidade": "UND", "Marca": "PÃES DELÍCIA", "Preço Assaí": 6.99, "Preço Atacadão": 8.00},
-    {"Nome do Produto": "REFRESCO PÓ 8G", "Unidade": "UND", "Marca": "SUKKI", "Preço Assaí": None, "Preço Atacadão": 0.39},
-    {"Nome do Produto": "BANDEJA DE OVOS 30UND", "Unidade": "UND", "Marca": "GSL", "Preço Assaí": None, "Preço Atacadão": 11.59},
-    {"Nome do Produto": "PASTA DE DENTES 70GR", "Unidade": "UND", "Marca": "EVEN TRI PROT", "Preço Assaí": 2.09, "Preço Atacadão": 2.49},
-    {"Nome do Produto": "SABONETE 80GR", "Unidade": "UND", "Marca": "FRANCIS INTENSO", "Preço Assaí": 1.59, "Preço Atacadão": 1.99},
-    {"Nome do Produto": "PAPEL HIGIÊNICO 4UND.", "Unidade": "UND", "Marca": "FLORAL", "Preço Assaí": 3.99, "Preço Atacadão": 2.90},
-    {"Nome do Produto": "KIT SHAMPOO/CONDIC.", "Unidade": "UND", "Marca": "DABELLE", "Preço Assaí": 17.49, "Preço Atacadão": 15.91},
-    {"Nome do Produto": "ESCOVA DE DENTES", "Unidade": "UND", "Marca": "SORRISO", "Preço Assaí": 3.99, "Preço Atacadão": 2.79},
-    {"Nome do Produto": "FIO DENTAL", "Unidade": "UND", "Marca": "JADE PRO", "Preço Assaí": 8.95, "Preço Atacadão": 4.99},
-    {"Nome do Produto": "DESODORANTE NEUTRO", "Unidade": "UND", "Marca": "ABOVE CREME", "Preço Assaí": 3.39, "Preço Atacadão": None},
-    {"Nome do Produto": "PAPEL HIGIENICO COM 8UND", "Unidade": "UND", "Marca": "GIRASSOL 30M NEUTRO", "Preço Assaí": 6.29, "Preço Atacadão": 6.29},
-    {"Nome do Produto": "ÁGUA SANITÁRIA 1 LT", "Unidade": "UND", "Marca": "BRINORT", "Preço Assaí": 2.65, "Preço Atacadão": 2.29},
-    {"Nome do Produto": "DESINFETANTE 2LT", "Unidade": "UND", "Marca": "BRINORT EUCALIPTO", "Preço Assaí": 5.45, "Preço Atacadão": 5.29},
-    {"Nome do Produto": "SABÃO EM BARRA 450G / 180G", "Unidade": "UND", "Marca": "GUAMÁ", "Preço Assaí": 4.49, "Preço Atacadão": 2.35},
-    {"Nome do Produto": "SABÃO EM PÓ 400GR", "Unidade": "UND", "Marca": "LAV ROUPA PÓ SONHO", "Preço Assaí": 3.39, "Preço Atacadão": 1.80},
-    {"Nome do Produto": "AMACIANTE 2LT", "Unidade": "UND", "Marca": "AMAC HIPER PLUS", "Preço Assaí": 5.79, "Preço Atacadão": 5.39},
-    {"Nome do Produto": "MULTIÚSO 500ML", "Unidade": "UND", "Marca": "BRILUX MULTIUSO", "Preço Assaí": 3.99, "Preço Atacadão": 4.15},
-    {"Nome do Produto": "ESPONJA", "Unidade": "UND", "Marca": "ESFRELUX C/4", "Preço Assaí": 0.75, "Preço Atacadão": 0.55},
-    {"Nome do Produto": "PALHA DE AÇO", "Unidade": "UND", "Marca": "LUSTRO", "Preço Assaí": 1.55, "Preço Atacadão": 1.55},
-    {"Nome do Produto": "DETERGENTE 500ML", "Unidade": "UND", "Marca": "BRILUX", "Preço Assaí": 1.85, "Preço Atacadão": 2.05},
-    {"Nome do Produto": "DESINFETANTE 500ML", "Unidade": "UND", "Marca": "BRILUX EUCALIPTO", "Preço Assaí": 1.99, "Preço Atacadão": 2.79}
-]
-
+# Base inicial de cotação, com marca separada por loja para evitar comparar marcas diferentes como se fossem iguais.
+_colunas_cotacao = ["Nº", "Nome do Produto", "Unidade", "Marca Assaí", "Preço Assaí", "Marca Atacadão", "Preço Atacadão"]
+_linhas_cotacao = """
+1|ARROZ 1KG|KG|PRATO CHIC|3.39|PANELAÇO|4.49
+2|FEIJÃO 1KG|KG|KICALDO|5.62|BULNEZ|5.69
+3|AÇUCAR 1KG|KG|CRISTAL SONORA|2.79|CRISTAL SONORA|3.35
+4|FARINHA||||MANDIOCA DONA|4.29
+5|TRIGO 1KG|KG|TRIGOLAR|4.70|FINNA|4.69
+6|OLEO 900ML|FR|SERRA VERDE|7.49|SERRA VERDE|6.95
+7|SAL 1KG|KG|FELICIA|2.25|RN|1.79
+8|MACARRÃO ESPAG. 400G|PC|BOM SABOR|1.89|BOM SABOR|2.09
+9|MOLHO TOMATE SC300G|SC/G|BONARE|1.59|BOM SABOR|1.59
+10|VINAGRE 500ML|FR|VIRROSAS|3.19|VIRROSA|2.59
+11|CAFE 250GR|PC|PILÃO|8.09|MANAUS|9.99
+12|SARDINHA 125G|LT|PALMEIRA|4.89|SUPLESCA|5.59
+13|BOLACHA DOCE RECHEADA 80G|PC|TRIGOLINO|1.69|TRIGOLIN|1.39
+14|BISCOITO SALGADO CREMCKER 300G|PC|RACHEIRO|2.99|ESTRELA|3.99
+15|LEITE EM PÓ|||||
+16|COMPOSTO LACTEO 400G|PC|PURIBON|8.39|PIRACANJUBA|11.89
+18|GOIABADA|||||
+19|MIOJO 74G DVS SABOR|UND|NOSSO SABOR LAMEN|1.23|NOSSA SABOR LAMEN|1.49
+20|CESTA BÁSICA 1|||89.00||
+21|CESTA BÁSICA 2|||159.00||
+22|FLOCÃO 500GR|G|LIVRE FLOCOS|3.89||
+23|SELETA LEGUMES 170G|LT|PREDILECTA|2.79|BONARE SC|3.29
+24|ACHOCOLATADO 200GR|PC|APITI POWER|4.30|MARATÁ|4.65
+25|BISCOITO ROSQUINHA DOCE 300G|PC|TRIGOLINO|4.29|ESTRELA COCO|3.69
+26|MARGARINA 250G|UND|PRIMOR|2.95|PRIMOR|3.29
+27|MARGARINA 500G|UND|PRIMOR|4.99|PRIMOR|6.00
+28|PÃO FORMA 450G|UND|PÃES DELÍCIA|6.99|PAES DELICIA|8.00
+29|REFRESCO PÓ 8G|UND|||SUKKI|0.39
+30|BANDEJA DE OVOS 30UND|UND|||GSL|11.59
+31|PASTA DE DENTES 70GR|UND|EVEN TRI PROT|2.09|CLOSEUP|2.49
+32|SABONETE 80GR|UND|FRANCIS INTENSO|1.59|EVEN|1.99
+33|PAPEL HIGIÊNICO INDIV.|||||
+34|PAPEL HIGIÊNICO 4UND.|UND|FLORAL|3.99|GIRASOL 30MT|2.90
+35|SHAMPOO|||||
+36|CONDICIONADOR|||||
+37|KIT SHAMPOO/CONDIC.|UND|DABELLE|17.49|ABOVE|15.91
+38|ESCOVA DE DENTES|UND|SORRISO|3.99|CONDOR|2.79
+39|PENTE|||||
+40|FIO DENTAL|UND|JADE PRO|8.95|DENTRAT MENTA|4.99
+41|DESODORANTE NEUTRO|UND|ABOVE CREME|3.39||
+42|PAPEL HIGIENICO COM 8UND|UND|GIRASSOL 30M NEUTRO|6.29|GIRASOL 30MT|6.29
+43|ÁGUA SANITÁRIA 1 LT|UND|BRINORT|2.65|BRINORT|2.29
+44|DESINFETANTE 2LT|UND|BRINORT EUCALIPTO|5.45|BRINORT|5.29
+45|SABÃO EM BARRA 450G / 180G|UND|GUAMÁ|4.49|MULTIUSO|2.35
+46|SABÃO EM PÓ 400GR|UND|LAV ROUPA PÓ SONHO|3.39|DET. PO ABSOLUTO|1.80
+47|AMACIANTE 2LT|UND|AMAC HIPER PLUS|5.79|BRINORT|5.39
+48|MULTIÚSO 500ML|UND|BRILUX MULTIUSO|3.99|BRILUX MULTIUSO|4.15
+49|ESPONJA|UND|ESFRELUX C/4|0.75|JEITOSA UND|0.55
+50|PALHA DE AÇO||||LUSTRO|1.55
+51|DETERGENTE 500ML|UND|BRILUX|1.85|FC|2.05
+52|DESINFETANTE 500ML|UND|BRILUX EUCALIPTO|1.99|ECONOMICO|2.79
+"""
+dados_completos = []
+for _linha in _linhas_cotacao.strip().splitlines():
+    _valores = _linha.split("|")
+    _registro = dict(zip(_colunas_cotacao, _valores))
+    for _campo in ("Preço Assaí", "Preço Atacadão"):
+        _registro[_campo] = float(_registro[_campo]) if _registro[_campo] else None
+    dados_completos.append(_registro)
 menu = st.sidebar.radio("Navegabilidade:", [
     "📥 Upload & Importação",
-    "📦 Cadastrar Produtos & Marcas", 
-    "🏭 Fornecedores & Preços", 
+    "📦 Cadastrar Produtos & Marcas",
+    "🏭 Fornecedores & Preços",
+    "📦 Estoque & Movimentações",
     "📊 Cotações & Histórico",
     "📦 Gestão de Lotes & Precificação",
     "🧩 Montagem de Kits"
@@ -67,277 +86,481 @@ menu = st.sidebar.radio("Navegabilidade:", [
 if menu == "📥 Upload & Importação":
     st.header("📥 Importação Automatizada via Planilha Oficial")
     st.markdown("Faça o upload da **Planilha Padrão Oficial** para atualizar produtos e cotações de forma limpa.")
-    
+
     # Gerador dinâmico de planilha em memória
     output = io.BytesIO()
-    df_m = pd.DataFrame(dados_completos)
+    df_m = pd.DataFrame(dados_completos, columns=_colunas_cotacao)
     with pd.ExcelWriter(output, engine='openpyxl') as writer:
         df_m.to_excel(writer, index=False, sheet_name='Cotações')
     excel_bytes = output.getvalue()
-    
+
     st.download_button(
         label="⬇️ Baixar Planilha Modelo Padrão Oficial",
         data=excel_bytes,
         file_name="Cestas_Bom_Dia_Template_Upload.xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     )
-        
+
     st.markdown("---")
     uploaded_file = st.file_uploader("Carregar Planilha Oficial Preenchida (.xlsx)", type=["xlsx"])
-    
+
     if uploaded_file is not None:
         try:
             df_up = pd.read_excel(uploaded_file, sheet_name=0, engine="openpyxl")
-            st.success(f"Planilha carregada com sucesso! {len(df_up)} produtos encontrados.")
-            
-            if st.button("🚀 Processar e Salvar Cotações Oficiais"):
-                conn = get_connection()
-                cursor = conn.cursor()
-                
-                cursor.execute("DELETE FROM cotacoes")
-                cursor.execute("DELETE FROM itens_lote")
-                cursor.execute("DELETE FROM produtos")
-                conn.commit()
-                
-                count_prods = 0
-                count_cots = 0
-                
-                for idx, row in df_up.iterrows():
-                    nome_prod = str(row.iloc[0]).strip() if not pd.isna(row.iloc[0]) else ""
-                    if not nome_prod or nome_prod.upper() in ["NAN", "NONE", "PRODUTO", "ITEM", "NOME DO PRODUTO"]:
-                        continue
-                        
-                    unidade = str(row.iloc[1]).strip().upper() if len(row) > 1 and not pd.isna(row.iloc[1]) else "UN"
-                    if not unidade or unidade in ["NAN", "NONE"]:
-                        unidade = "UN"
-                        
-                    marca = str(row.iloc[2]).strip().upper() if len(row) > 2 and not pd.isna(row.iloc[2]) else "GERAL"
-                    if not marca or marca in ["NAN", "NONE"]:
-                        marca = "GERAL"
-
-                    cursor.execute(
-                        "INSERT INTO produtos (nome, marca, unidade, grupo_equivalencia) VALUES (?, ?, ?, ?)",
-                        (nome_prod.upper(), marca, unidade, nome_prod.upper())
-                    )
-                    conn.commit()
-                    count_prods += 1
-                    
-                    cursor.execute("SELECT id FROM produtos WHERE nome = ? AND marca = ?", (nome_prod.upper(), marca))
-                    p_res = cursor.fetchone()
-                    if not p_res:
-                        continue
-                    produto_db_id = p_res[0]
-                    
-                    # Preço Assaí
-                    if len(row) > 3:
-                        preco_assai = row.iloc[3]
-                        if not pd.isna(preco_assai) and isinstance(preco_assai, (int, float)) and preco_assai > 0:
-                            cursor.execute("SELECT id FROM fornecedores WHERE nome = 'Assaí Atacadista'")
-                            f_res = cursor.fetchone()
-                            if f_res:
-                                cursor.execute(
-                                    "INSERT INTO cotacoes (produto_id, fornecedor_id, preco, data_cotacao) VALUES (?, ?, ?, date('now'))",
-                                    (produto_db_id, f_res[0], float(preco_assai))
-                                )
-                                count_cots += 1
-                            
-                    # Preço Atacadão
-                    if len(row) > 4:
-                        preco_atacadao = row.iloc[4]
-                        if not pd.isna(preco_atacadao) and isinstance(preco_atacadao, (int, float)) and preco_atacadao > 0:
-                            cursor.execute("SELECT id FROM fornecedores WHERE nome = 'Atacadão'")
-                            f_res = cursor.fetchone()
-                            if f_res:
-                                cursor.execute(
-                                    "INSERT INTO cotacoes (produto_id, fornecedor_id, preco, data_cotacao) VALUES (?, ?, ?, date('now'))",
-                                    (produto_db_id, f_res[0], float(preco_atacadao))
-                                )
-                                count_cots += 1
-                            
-                conn.commit()
-                conn.close()
-                st.success(f"✅ Importação oficial concluída com sucesso! {count_prods} produtos e {count_cots} cotações gravadas.")
+            st.success(f"Planilha carregada: {len(df_up)} linhas para conferência.")
+            st.dataframe(df_up.head(30), use_container_width=True)
+            st.caption("A importação preserva cotações antigas. Se houver uma cotação do mesmo produto e loja na mesma data, ela será atualizada.")
+            if st.button("🚀 Validar e salvar cotações", type="primary"):
+                resultado = importar_cotacoes(df_up)
+                st.success(
+                    f"Importação concluída: {resultado['produtos']} produtos conferidos e "
+                    f"{resultado['cotacoes']} cotações salvas em {resultado['data']}."
+                )
         except Exception as e:
-            st.error(f"Erro crítico ao processar a planilha oficial: {e}")
-
+            st.error(f"A planilha não foi importada: {e}")
 elif menu == "📦 Cadastrar Produtos & Marcas":
     st.header("📦 Cadastro de Produtos e Marcas")
     with st.form("form_prod"):
         n = st.text_input("Nome do Produto (Ex: Arroz 1kg, Feijão 1kg)")
-        m = st.text_input("Marca (Ex: Prato Chic, Kicaldo, Pilão)")
+        m = st.text_input("Marca principal (opcional; as marcas cotadas são registradas por loja)")
         u = st.selectbox("Unidade", ["KG", "PCT", "UN", "FR", "LT", "CX", "SC"])
         g = st.text_input("Grupo / Categoria (Ex: Alimento, Higiene, Limpeza)")
         if st.form_submit_button("Salvar Produto"):
-            if n and m:
+            nome = n.strip().upper()
+            marca_principal = m.strip().upper() or "VARIÁVEL"
+            unidade_produto = normalizar_unidade(u)
+            grupo = g.strip().upper() or nome
+            if not nome:
+                st.error("Informe o nome do produto.")
+            else:
                 conn = get_connection()
                 cursor = conn.cursor()
-                cursor.execute("INSERT INTO produtos (nome, marca, unidade, grupo_equivalencia) VALUES (?, ?, ?, ?)", (n, m, u, g))
-                conn.commit()
-                conn.close()
-                st.success("Produto cadastrado com sucesso!")
-                st.rerun()
-
+                existente = next((
+                    item for item in cursor.execute("SELECT id, nome, unidade FROM produtos").fetchall()
+                    if normalizar_nome_produto(item["nome"]) == normalizar_nome_produto(nome)
+                    and normalizar_unidade(item["unidade"]) == unidade_produto
+                ), None)
+                if existente:
+                    st.warning("Já existe um produto com este nome e unidade. Atualize esse cadastro em vez de criar outro.")
+                    conn.close()
+                else:
+                    cursor.execute(
+                        "INSERT INTO produtos (nome, marca, unidade, grupo_equivalencia) VALUES (?, ?, ?, ?)",
+                        (nome, marca_principal, unidade_produto, grupo),
+                    )
+                    conn.commit()
+                    conn.close()
+                    st.success("Produto cadastrado com sucesso.")
+                    st.rerun()
 elif menu == "🏭 Fornecedores & Preços":
-    st.header("🏭 Cotações por Atacadista & Menor Preço")
+    st.header("🏪 Mercados, distribuidoras e cotações")
+    st.caption("Cadastre fornecedores de Boa Vista e compare a última cotação registrada por produto e loja.")
+
+    with st.expander("Cadastrar mercado ou distribuidora", expanded=False):
+        with st.form("form_fornecedor"):
+            nome_fornecedor = st.text_input("Nome do fornecedor")
+            col_f1, col_f2, col_f3 = st.columns(3)
+            with col_f1:
+                tipo_fornecedor = st.selectbox("Tipo", ["Mercado", "Atacarejo", "Distribuidora", "Outro"])
+            with col_f2:
+                cidade_fornecedor = st.text_input("Cidade", value="Boa Vista")
+            with col_f3:
+                bairro_fornecedor = st.text_input("Bairro")
+            telefone_fornecedor = st.text_input("Telefone (opcional)")
+            salvar_fornecedor = st.form_submit_button("Cadastrar fornecedor")
+        if salvar_fornecedor:
+            try:
+                criar_fornecedor(nome_fornecedor, tipo_fornecedor, cidade_fornecedor, bairro_fornecedor, telefone_fornecedor)
+                st.success("Fornecedor cadastrado.")
+                st.rerun()
+            except Exception as e:
+                st.error(str(e))
+
     conn = get_connection()
-    df_cot = pd.read_sql_query("""
-        SELECT (p.nome || ' - ' || p.marca) AS produto, p.unidade, f.nome AS fornecedor, c.preco, c.data_cotacao
-        FROM cotacoes c 
-        JOIN produtos p ON c.produto_id = p.id 
-        JOIN fornecedores f ON c.fornecedor_id = f.id
-        ORDER BY c.preco ASC
+    df_fornecedores = pd.read_sql_query("SELECT id, nome, tipo, cidade, bairro, telefone FROM fornecedores ORDER BY nome", conn)
+    df_produtos_cot = pd.read_sql_query("SELECT id, nome, marca, unidade FROM produtos ORDER BY nome, unidade", conn)
+    conn.close()
+    with st.expander(f"Fornecedores cadastrados ({len(df_fornecedores)})", expanded=False):
+        st.dataframe(df_fornecedores.drop(columns=["id"]), use_container_width=True)
+
+    if not df_produtos_cot.empty and not df_fornecedores.empty:
+        with st.expander("Registrar uma cotação", expanded=True):
+            with st.form("form_nova_cotacao"):
+                col_q1, col_q2 = st.columns(2)
+                with col_q1:
+                    produto_cotado_id = st.selectbox(
+                        "Produto", df_produtos_cot["id"].tolist(),
+                        format_func=lambda pid: df_produtos_cot.loc[df_produtos_cot["id"] == pid].apply(
+                            lambda r: f"{r['nome']} ({r['unidade']})", axis=1
+                        ).iloc[0],
+                    )
+                    fornecedor_cotacao_id = st.selectbox(
+                        "Mercado / distribuidora", df_fornecedores["id"].tolist(),
+                        format_func=lambda fid: df_fornecedores.loc[df_fornecedores["id"] == fid, "nome"].iloc[0],
+                    )
+                with col_q2:
+                    preco_cotado = st.number_input("Preço (R$)", min_value=0.01, value=1.0, step=0.01, format="%.2f")
+                    data_cotada = st.date_input("Data da cotação", value=datetime.now().date())
+                    marca_cotada = st.text_input("Marca ofertada")
+                    origem_cotada = st.text_input("Origem / observação (opcional)", placeholder="Ex.: visita à loja, telefone, encarte")
+                salvar_cotacao = st.form_submit_button("Salvar cotação")
+            if salvar_cotacao:
+                try:
+                    _, status_cotacao = registrar_cotacao(
+                        produto_cotado_id, fornecedor_cotacao_id, preco_cotado,
+                        data_cotada, marca_cotada, origem_cotada,
+                    )
+                    st.success("Cotação " + ("atualizada" if status_cotacao == "atualizada" else "registrada") + ".")
+                    st.rerun()
+                except Exception as e:
+                    st.error(str(e))
+
+    conn = get_connection()
+    df_comparativo = pd.read_sql_query("""
+        WITH recentes AS (
+            SELECT c.*, ROW_NUMBER() OVER (
+                PARTITION BY produto_id, fornecedor_id ORDER BY data_cotacao DESC, id DESC
+            ) AS ordem_fornecedor
+            FROM cotacoes c
+        )
+        SELECT p.nome AS produto, p.unidade, f.nome AS fornecedor,
+               r.marca AS marca_ofertada, r.preco, r.data_cotacao, r.origem
+        FROM recentes r
+        JOIN produtos p ON r.produto_id = p.id
+        JOIN fornecedores f ON r.fornecedor_id = f.id
+        WHERE r.ordem_fornecedor = 1
+        ORDER BY p.nome, r.preco, f.nome
     """, conn)
     conn.close()
-    
-    if not df_cot.empty:
-        st.dataframe(df_cot, use_container_width=True)
+    if not df_comparativo.empty:
+        df_menor = (
+            df_comparativo.sort_values(["preco", "data_cotacao"], ascending=[True, False])
+            .groupby(["produto", "unidade"], as_index=False).first()
+            [["produto", "unidade", "fornecedor", "marca_ofertada", "preco", "data_cotacao"]]
+        )
+        st.subheader("Melhor oferta mais recente por produto")
+        st.dataframe(df_menor, use_container_width=True)
+        st.subheader("Comparativo: última oferta de cada fornecedor")
+        st.dataframe(df_comparativo, use_container_width=True)
     else:
-        st.info("Nenhuma cotação registada. Faça o upload da planilha oficial primeiro.")
+        st.info("Registre ou importe cotações para ver a comparação entre fornecedores.")
+elif menu == "📦 Estoque & Movimentações":
+    st.header("📦 Estoque e Movimentações")
+    st.caption("O saldo abaixo é calculado pelas movimentações registradas desde a ativação deste controle. Confira a contagem física e lance o saldo inicial como entrada.")
+    conn = get_connection()
+    df_saldo = pd.read_sql_query("""
+        SELECT p.id AS produto_id, p.nome AS produto, p.marca, p.unidade,
+               COALESCE(SUM(CASE
+                   WHEN m.tipo IN ('ENTRADA', 'AJUSTE_ENTRADA') THEN m.quantidade
+                   WHEN m.tipo IN ('SAIDA', 'AJUSTE_SAIDA') THEN -m.quantidade
+                   ELSE 0 END), 0) AS saldo_calculado
+        FROM produtos p
+        LEFT JOIN movimentacoes_estoque m ON m.produto_id = p.id
+        GROUP BY p.id, p.nome, p.marca, p.unidade
+        ORDER BY p.nome, p.marca
+    """, conn)
+    df_produtos = pd.read_sql_query("SELECT id, nome, marca, unidade FROM produtos ORDER BY nome, marca", conn)
+    conn.close()
+    st.dataframe(df_saldo.drop(columns=["produto_id"]), use_container_width=True)
 
+    if not df_produtos.empty:
+        with st.form("form_movimento_estoque"):
+            produto_id = st.selectbox(
+                "Produto",
+                df_produtos["id"].tolist(),
+                format_func=lambda pid: df_produtos.loc[df_produtos["id"] == pid].apply(
+                    lambda r: f"{r['nome']} — {r['marca']} ({r['unidade']})", axis=1
+                ).iloc[0],
+            )
+            tipo_label = st.selectbox("Movimentação", ["Entrada / saldo inicial", "Saída", "Ajuste para mais", "Ajuste para menos"])
+            quantidade = st.number_input("Quantidade", min_value=0.01, value=1.0, step=1.0)
+            custo_unitario = st.number_input("Custo unitário (R$; necessário para calcular o preço da cesta)", min_value=0.0, value=0.0, step=0.10)
+            observacao = st.text_input("Observação (opcional)")
+            salvar_movimento = st.form_submit_button("Registrar movimentação")
+
+        if salvar_movimento:
+            tipo_movimento = {
+                "Entrada / saldo inicial": "ENTRADA",
+                "Saída": "SAIDA",
+                "Ajuste para mais": "AJUSTE_ENTRADA",
+                "Ajuste para menos": "AJUSTE_SAIDA",
+            }[tipo_label]
+            with closing(get_connection()) as conn, conn:
+                cursor = conn.cursor()
+                saldo_atual = cursor.execute("""
+                    SELECT COALESCE(SUM(CASE
+                        WHEN tipo IN ('ENTRADA', 'AJUSTE_ENTRADA') THEN quantidade
+                        ELSE -quantidade END), 0)
+                    FROM movimentacoes_estoque WHERE produto_id = ?
+                """, (produto_id,)).fetchone()[0]
+                if tipo_movimento in ("SAIDA", "AJUSTE_SAIDA") and quantidade > saldo_atual:
+                    st.error(f"Saldo insuficiente. Saldo calculado: {saldo_atual:g}.")
+                else:
+                    cursor.execute("""
+                        INSERT INTO movimentacoes_estoque
+                            (produto_id, tipo, quantidade, custo_unitario, observacao)
+                        VALUES (?, ?, ?, ?, ?)
+                    """, (produto_id, tipo_movimento, quantidade, custo_unitario if tipo_movimento in ("ENTRADA", "AJUSTE_ENTRADA") and custo_unitario > 0 else None, observacao.strip() or None))
+                    conn.commit()
+                    st.success("Movimentação registrada.")
+                    st.rerun()
+    else:
+        st.info("Cadastre ou importe produtos para começar a controlar o estoque.")
 elif menu == "📊 Cotações & Histórico":
     st.header("📊 Histórico Temporal de Preços")
     conn = get_connection()
     df = pd.read_sql_query("""
-        SELECT c.data_cotacao, (p.nome || ' - ' || p.marca) AS prod, f.nome AS atac, c.preco 
-        FROM cotacoes c 
-        JOIN produtos p ON c.produto_id=p.id 
-        JOIN fornecedores f ON c.fornecedor_id=f.id 
+        SELECT c.data_cotacao, (p.nome || ' - ' || p.marca) AS prod, f.nome AS atac, c.marca AS marca_ofertada, c.preco
+        FROM cotacoes c
+        JOIN produtos p ON c.produto_id=p.id
+        JOIN fornecedores f ON c.fornecedor_id=f.id
         ORDER BY c.data_cotacao DESC
     """, conn)
     conn.close()
-    if not df.empty: 
+    if not df.empty:
         st.dataframe(df, use_container_width=True)
     else:
         st.info("Nenhuma cotação registada.")
 
 elif menu == "📦 Gestão de Lotes & Precificação":
-    st.header("📦 Sugestão de Compra: Menores Preços da Cotação")
-    st.markdown("O sistema puxa automaticamente os produtos com os **menores preços** das cotações vigentes para montar o seu lote.")
-    
-    nome_lote_input = st.text_input("Identificação do Lote", value=f"Lote - {datetime.now().strftime('%d/%m/%Y')}")
-    
+    st.header("📦 Lote de compra")
+    st.markdown("Defina quanto comprar de cada produto. O sistema sugere a oferta mais barata entre as últimas cotações registradas e permite escolher outro fornecedor.")
+    nome_lote_input = st.text_input("Identificação do lote", value=f"Lote - {datetime.now():%d/%m/%Y}")
+    observacao_lote = st.text_input("Observação da compra (opcional)")
+
     conn = get_connection()
-    df_sugestao = pd.read_sql_query("""
-        SELECT p.id as produto_id, (p.nome || ' - ' || p.marca) AS item, MIN(c.preco) as menor_preco, f.nome as fornecedor
-        FROM cotacoes c
-        JOIN produtos p ON c.produto_id = p.id
-        JOIN fornecedores f ON c.fornecedor_id = f.id
-        GROUP BY p.id
-        ORDER BY p.nome ASC
+    df_ofertas = pd.read_sql_query("""
+        WITH recentes AS (
+            SELECT c.*, ROW_NUMBER() OVER (
+                PARTITION BY produto_id, fornecedor_id ORDER BY data_cotacao DESC, id DESC
+            ) AS ordem_fornecedor
+            FROM cotacoes c
+        )
+        SELECT r.id AS cotacao_id, r.produto_id, r.fornecedor_id,
+               p.nome AS produto, p.unidade, f.nome AS fornecedor,
+               r.marca AS marca_ofertada, r.preco, r.data_cotacao
+        FROM recentes r
+        JOIN produtos p ON r.produto_id = p.id
+        JOIN fornecedores f ON r.fornecedor_id = f.id
+        WHERE r.ordem_fornecedor = 1
+        ORDER BY p.nome, r.preco, f.nome
     """, conn)
     conn.close()
-    
-    if not df_sugestao.empty:
-        with st.form("form_lote_auto"):
-            st.subheader("Itens Sugeridos (Baseados no Menor Preço)")
-            
-            lote_itens_salvar = []
-            for idx, row in df_sugestao.iterrows():
-                cols = st.columns([3, 2, 2, 2])
-                with cols[0]:
-                    st.markdown(f"**{row['item']}**  \n*Fornecedor:* `{row['fornecedor']}`")
-                with cols[1]:
-                    qtd_compra = st.number_input(f"Qtd", min_value=0.0, value=10.0, key=f"lote_qtd_{idx}")
-                with cols[2]:
-                    preco_sugerido = st.number_input(f"Preço Unit.", min_value=0.01, value=float(row['menor_preco']), key=f"lote_preco_{idx}")
-                with cols[3]:
-                    st.markdown(f"**Subtotal:**  \nR$ {qtd_compra * preco_sugerido:.2f}")
-                
-                if qtd_compra > 0:
-                    lote_itens_salvar.append((row['produto_id'], qtd_compra, preco_sugerido))
-                
-            if st.form_submit_button("💾 Salvar Lote Fechado no Estoque"):
-                conn = get_connection()
-                cursor = conn.cursor()
-                custo_produtos = sum([q * p for _, q, p in lote_itens_salvar])
-                custo_total_lote = custo_produtos 
-                
-                cursor.execute("INSERT INTO lotes (nome_lote, data_compra, custo_total) VALUES (?, date('now'), ?)", (nome_lote_input, custo_total_lote))
-                lote_id = cursor.lastrowid
-                
-                for p_id, qtd, preco in lote_itens_salvar:
-                    cursor.execute("INSERT INTO itens_lote (lote_id, produto_id, quantidade, preco_unitario) VALUES (?, ?, ?, ?)", (lote_id, p_id, preco))
-                
-                conn.commit()
-                conn.close()
-                st.success(f"✅ Lote '{nome_lote_input}' salvo com sucesso! Custo de produtos: R$ {custo_produtos:.2f}")
-    else:
-        st.warning("Nenhuma cotação encontrada. Faça o upload da planilha oficial primeiro.")
 
-elif menu == "🧩 Montagem de Kits":
-    st.header("🧩 Cálculo Automático de Rendimento, Frete & Sugestão de Venda")
-    st.markdown("O sistema contabiliza automaticamente o número de cestas possíveis, adiciona o **frete fixo de R$ 10,89** e exibe o preço sugerido com margem.")
-    
-    conn = get_connection()
-    df_lotes = pd.read_sql_query("SELECT id, nome_lote, custo_total FROM lotes ORDER BY id DESC", conn)
-    conn.close()
-    
-    if not df_lotes.empty:
-        lote_escolhido = st.selectbox("Selecione o Lote de Referência", df_lotes["id"], format_func=lambda x: df_lotes[df_lotes["id"] == x]["nome_lote"].values[0])
-        
-        modelo_cesta = st.selectbox("Selecione o Modelo da Cesta", ["Cesta Econômica (12-14 itens)", "Cesta Família (20-30 itens)", "Cesta Turbinada (35-60 itens)", "Kit Higiene", "Sacola Limpeza"])
-        
-        margem = st.slider("Margem de Lucro Desejada (%)", min_value=0.0, max_value=200.0, value=25.0, step=1.0)
-        
-        conn = get_connection()
-        df_itens = pd.read_sql_query(f"SELECT p.id, (p.nome || ' - ' || p.marca) AS produto, il.quantidade, il.preco_unitario FROM itens_lote il JOIN produtos p ON il.produto_id = p.id WHERE il.lote_id = {lote_escolhido}", conn)
-        conn.close()
-        
-        if not df_itens.empty:
-            st.markdown("---")
-            st.subheader("📋 Composição da Receita por Cesta")
-            
-            custo_produtos_cesta = 0.0
-            capacidades_maximas = []
-            
-            for idx, row in df_itens.iterrows():
-                with st.container():
-                    col_p, col_c, col_q, col_sub = st.columns([3, 2, 2, 2])
-                    with col_p:
-                        st.markdown(f"**{row['produto']}**  \n*(Estoque Lote: {int(row['quantidade'])} un)*")
-                    with col_c:
-                        custo_real_unit = st.number_input(f"Custo Unit.", min_value=0.01, value=float(row['preco_unitario']), key=f"custo_{idx}_{row['id']}")
-                    with col_q:
-                        qtd_na_cesta = st.number_input(f"Qtd por Cesta", min_value=0, value=1, key=f"rec_{idx}_{row['id']}")
-                    with col_sub:
-                        subtotal_item = qtd_na_cesta * custo_real_unit
-                        st.markdown(f"**Subtotal:**  \nR$ {subtotal_item:.2f}")
-                    
-                    custo_produtos_cesta += subtotal_item
-                    
-                    if qtd_na_cesta > 0:
-                        cap_item = int(row['quantidade'] // qtd_na_cesta)
-                        capacidades_maximas.append(cap_item)
-                    
-                    st.divider()
-            
-            max_cestas_possiveis = min(capacidades_maximas) if capacidades_maximas else 0
-            
-            frete_fixo = 10.89
-            custo_frete_por_cesta = frete_fixo / max_cestas_possiveis if max_cestas_possiveis > 0 else 0.0
-            custo_total_unitario_cesta = custo_produtos_cesta + custo_frete_por_cesta
-            
-            preco_venda_sugerido = custo_total_unitario_cesta * (1 + (margem / 100))
-            
-            st.markdown("---")
-            st.subheader("📊 Painel de Sugestão de Venda e Custos")
-            
-            st.markdown(f"""
-            <div style="background-color: #1e2530; padding: 25px; border-radius: 12px; border: 2px solid #28a745; text-align: center; margin-bottom: 20px;">
-                <h3 style="color: #ffffff; margin: 0; font-size: 20px;">PREÇO SUGERIDO DE VENDA POR CESTA</h3>
-                <h1 style="color: #28a745; font-size: 42px; margin: 10px 0;">R$ {preco_venda_sugerido:.2f}</h1>
-                <p style="color: #adb5bd; margin: 0; font-size: 14px;">Com base em {max_cestas_possiveis} cestas possíveis | Margem de {margem}% | Frete incluso (R$ 10,89)</p>
-            </div>
-            """, unsafe_allow_html=True)
-            
-            col_m1, col_m2, col_m3, col_m4 = st.columns(4)
-            with col_m1:
-                st.metric("Cestas Possíveis", f"{max_cestas_possiveis} Cestas")
-            with col_m2:
-                st.metric("Custo dos Produtos", f"R$ {custo_produtos_cesta:.2f}")
-            with col_m3:
-                st.metric("Frete Rateado", f"R$ {custo_frete_por_cesta:.2f}")
-            with col_m4:
-                st.metric("Custo Total Unitário", f"R$ {custo_total_unitario_cesta:.2f}")
+    if not df_ofertas.empty:
+        lote_itens_salvar = []
+        st.caption("Quantidade zero = produto fora deste lote. Escolha o fornecedor e informe a quantidade realmente comprada.")
+        for produto_id, ofertas in df_ofertas.groupby("produto_id", sort=False):
+            ofertas = ofertas.sort_values(["preco", "data_cotacao"], ascending=[True, False]).reset_index(drop=True)
+            primeira = ofertas.iloc[0]
+            col_prod, col_fornec, col_qtd, col_sub = st.columns([3, 3, 1.5, 1.5])
+            with col_prod:
+                st.markdown(f"**{primeira['produto']}** ({primeira['unidade']})")
+            with col_fornec:
+                quote_options = ofertas["cotacao_id"].tolist()
+                quote_label = {
+                    int(r["cotacao_id"]): f"{r['fornecedor']} — {r['marca_ofertada'] or 'marca não informada'} — R$ {r['preco']:.2f} ({r['data_cotacao']})"
+                    for _, r in ofertas.iterrows()
+                }
+                quote_id = st.selectbox(
+                    "Oferta", quote_options,
+                    format_func=lambda qid: quote_label[int(qid)],
+                    key=f"lote_quote_{produto_id}",
+                )
+                oferta_escolhida = ofertas.loc[ofertas["cotacao_id"] == quote_id].iloc[0]
+            with col_qtd:
+                qtd_compra = st.number_input("Quantidade", min_value=0.0, value=0.0, step=1.0, key=f"lote_qtd_{produto_id}")
+            with col_sub:
+                st.markdown(f"**Subtotal**  \nR$ {qtd_compra * float(oferta_escolhida['preco']):.2f}")
+            if qtd_compra > 0:
+                lote_itens_salvar.append({
+                    "produto_id": int(produto_id),
+                    "fornecedor_id": int(oferta_escolhida["fornecedor_id"]),
+                    "cotacao_id": int(oferta_escolhida["cotacao_id"]),
+                    "quantidade": float(qtd_compra),
+                    "preco_unitario": float(oferta_escolhida["preco"]),
+                })
+
+        total_lote = sum(i["quantidade"] * i["preco_unitario"] for i in lote_itens_salvar)
+        st.metric("Custo estimado do lote", f"R$ {total_lote:.2f}")
+        if st.button("Salvar lote e dar entrada no estoque", type="primary"):
+            try:
+                resultado = salvar_lote_compra(nome_lote_input, lote_itens_salvar, observacao_lote)
+                st.success(f"Lote {resultado['nome']} salvo: {resultado['itens']} produtos, R$ {resultado['custo_total']:.2f}. Estoque atualizado.")
+                st.rerun()
+            except Exception as e:
+                st.error(str(e))
     else:
-        st.info("Nenhum lote cadastrado. Vá na aba 'Gestão de Lotes & Precificação' para registrar a compra.")
+        st.warning("Não há cotações para sugerir compras. Cadastre fornecedores e cotações primeiro.")
+elif menu == "🧩 Montagem de Kits":
+    st.header("🧺 Receitas, montagem e venda de cestas")
+    tab_receitas, tab_montagem, tab_vendas = st.tabs(["Modelos e receitas", "Montar cestas", "Cestas prontas e vendas"])
+
+    conn = get_connection()
+    df_tipos = pd.read_sql_query("SELECT id, nome, descricao FROM tipos_cesta ORDER BY nome", conn)
+    df_produtos = pd.read_sql_query("SELECT id, nome, unidade FROM produtos ORDER BY nome", conn)
+    conn.close()
+
+    with tab_receitas:
+        st.subheader("Criar modelo de cesta")
+        with st.form("form_tipo_cesta"):
+            nome_tipo = st.text_input("Nome do modelo", placeholder="Ex.: Cesta Família Econômica")
+            desc_tipo = st.text_input("Descrição")
+            criar_tipo = st.form_submit_button("Criar modelo")
+        if criar_tipo:
+            try:
+                with closing(get_connection()) as conn, conn:
+                    conn.execute("INSERT INTO tipos_cesta (nome, descricao) VALUES (?, ?)", (nome_tipo.strip(), desc_tipo.strip() or None))
+                st.success("Modelo criado.")
+                st.rerun()
+            except Exception as e:
+                st.error(f"Não foi possível criar o modelo: {e}")
+
+        if not df_tipos.empty and not df_produtos.empty:
+            tipo_receita = st.selectbox(
+                "Modelo para editar", df_tipos["id"].tolist(),
+                format_func=lambda tid: df_tipos.loc[df_tipos["id"] == tid, "nome"].iloc[0],
+                key="tipo_receita",
+            )
+            conn = get_connection()
+            df_receita = pd.read_sql_query("""
+                SELECT cc.produto_id, p.nome AS produto, p.unidade, cc.quantidade
+                FROM composicao_cesta cc JOIN produtos p ON p.id = cc.produto_id
+                WHERE cc.tipo_cesta_id = ? ORDER BY p.nome
+            """, conn, params=(tipo_receita,))
+            conn.close()
+            st.markdown("**Composição por cesta**")
+            if df_receita.empty:
+                st.info("Este modelo ainda não tem itens.")
+            else:
+                st.dataframe(df_receita.drop(columns=["produto_id"]), use_container_width=True)
+
+            with st.form("form_item_receita"):
+                col_r1, col_r2 = st.columns([3, 1])
+                with col_r1:
+                    produto_receita = st.selectbox(
+                        "Produto para incluir/atualizar", df_produtos["id"].tolist(),
+                        format_func=lambda pid: df_produtos.loc[df_produtos["id"] == pid].apply(
+                            lambda r: f"{r['nome']} ({r['unidade']})", axis=1
+                        ).iloc[0],
+                    )
+                with col_r2:
+                    quantidade_receita = st.number_input("Quantidade por cesta", min_value=0.01, value=1.0, step=0.25)
+                salvar_item_receita = st.form_submit_button("Incluir ou atualizar item")
+            if salvar_item_receita:
+                itens = [{"produto_id": int(r["produto_id"]), "quantidade": float(r["quantidade"])} for _, r in df_receita.iterrows()]
+                atualizados = False
+                for item in itens:
+                    if item["produto_id"] == int(produto_receita):
+                        item["quantidade"] = float(quantidade_receita)
+                        atualizados = True
+                        break
+                if not atualizados:
+                    itens.append({"produto_id": int(produto_receita), "quantidade": float(quantidade_receita)})
+                salvar_receita(tipo_receita, itens)
+                st.success("Receita salva.")
+                st.rerun()
+
+            if not df_receita.empty:
+                with st.form("form_remover_item_receita"):
+                    produto_remover = st.selectbox(
+                        "Remover item da receita", df_receita["produto_id"].tolist(),
+                        format_func=lambda pid: df_receita.loc[df_receita["produto_id"] == pid, "produto"].iloc[0],
+                    )
+                    remover_item = st.form_submit_button("Remover item")
+                if remover_item:
+                    itens = [
+                        {"produto_id": int(r["produto_id"]), "quantidade": float(r["quantidade"])}
+                        for _, r in df_receita.iterrows() if int(r["produto_id"]) != int(produto_remover)
+                    ]
+                    if itens:
+                        salvar_receita(tipo_receita, itens)
+                        st.success("Item removido e receita atualizada.")
+                    else:
+                        with closing(get_connection()) as conn, conn:
+                            conn.execute("DELETE FROM composicao_cesta WHERE tipo_cesta_id = ?", (tipo_receita,))
+                        st.success("A receita agora está vazia.")
+                    st.rerun()
+
+    with tab_montagem:
+        if not df_tipos.empty:
+            tipo_montagem = st.selectbox(
+                "Modelo a montar", df_tipos["id"].tolist(),
+                format_func=lambda tid: df_tipos.loc[df_tipos["id"] == tid, "nome"].iloc[0],
+                key="tipo_montagem",
+            )
+            itens_plano, max_cestas = obter_planejamento_montagem(tipo_montagem)
+            if not itens_plano:
+                st.info("Cadastre a receita do modelo na aba 'Modelos e receitas'.")
+            else:
+                df_plano = pd.DataFrame(itens_plano).rename(columns={
+                    "nome": "Produto", "unidade": "Unidade", "por_cesta": "Qtd. por cesta",
+                    "saldo": "Saldo atual", "custo_medio": "Custo médio unitário",
+                })
+                st.dataframe(df_plano[["Produto", "Unidade", "Qtd. por cesta", "Saldo atual", "Custo médio unitário"]], use_container_width=True)
+                custos_pendentes = [i["nome"] for i in itens_plano if i["custo_medio"] is None]
+                if max_cestas <= 0:
+                    st.warning("O estoque atual não permite montar uma cesta completa. Registre saldo inicial ou compre um lote.")
+                elif custos_pendentes:
+                    st.warning("Registre custo unitário nas entradas de estoque para calcular o preço: " + ", ".join(custos_pendentes))
+                else:
+                    qtd_montar = st.number_input("Quantidade de cestas a montar", min_value=1, max_value=max_cestas, value=max_cestas, step=1)
+                    col_c1, col_c2, col_c3 = st.columns(3)
+                    with col_c1:
+                        frete_montagem = st.number_input("Frete total desta montagem (R$)", min_value=0.0, value=0.0, step=1.0)
+                    with col_c2:
+                        embalagem = st.number_input("Embalagem por cesta (R$)", min_value=0.0, value=3.50, step=0.25)
+                    with col_c3:
+                        margem = st.slider("Margem bruta desejada (%)", min_value=0.0, max_value=80.0, value=25.0, step=1.0)
+                    custo_produtos_unitario = sum(i["por_cesta"] * i["custo_medio"] for i in itens_plano)
+                    frete_unitario = frete_montagem / qtd_montar
+                    custo_unitario = custo_produtos_unitario + embalagem + frete_unitario
+                    preco_sugerido = custo_unitario / (1 - margem / 100)
+                    col_m1, col_m2, col_m3 = st.columns(3)
+                    col_m1.metric("Custo de produtos por cesta", f"R$ {custo_produtos_unitario:.2f}")
+                    col_m2.metric("Custo total por cesta", f"R$ {custo_unitario:.2f}")
+                    col_m3.metric("Preço sugerido", f"R$ {preco_sugerido:.2f}")
+                    observacao_montagem = st.text_input("Observação desta montagem")
+                    if st.button("Montar e baixar os itens do estoque", type="primary"):
+                        try:
+                            resultado = montar_cestas(tipo_montagem, qtd_montar, frete_montagem, embalagem, margem, observacao_montagem)
+                            st.success(f"Montadas {resultado['quantidade']} cestas. Preço sugerido: R$ {resultado['preco_sugerido']:.2f} cada.")
+                            st.rerun()
+                        except Exception as e:
+                            st.error(str(e))
+        else:
+            st.info("Crie um modelo de cesta primeiro.")
+
+    with tab_vendas:
+        resumo = [dict(r) for r in obter_resumo_cestas()]
+        if resumo:
+            df_resumo = pd.DataFrame(resumo)
+            df_resumo["Disponíveis"] = df_resumo["montadas"] - df_resumo["vendidas"]
+            st.dataframe(df_resumo[["nome", "montadas", "vendidas", "Disponíveis"]].rename(columns={
+                "nome": "Modelo", "montadas": "Montadas", "vendidas": "Vendidas",
+            }), use_container_width=True)
+            disponiveis = df_resumo[df_resumo["Disponíveis"] > 0]
+            if not disponiveis.empty:
+                with st.form("form_venda_cesta"):
+                    tipo_venda = st.selectbox(
+                        "Modelo vendido", disponiveis["id"].tolist(),
+                        format_func=lambda tid: disponiveis.loc[disponiveis["id"] == tid, "nome"].iloc[0],
+                    )
+                    saldo_cestas = int(disponiveis.loc[disponiveis["id"] == tipo_venda, "Disponíveis"].iloc[0])
+                    quantidade_venda = st.number_input("Quantidade vendida", min_value=1, max_value=max(1, saldo_cestas), value=1, step=1)
+                    ultima_referencia = float(disponiveis.loc[disponiveis["id"] == tipo_venda, "ultimo_preco_sugerido"].iloc[0]) if "ultimo_preco_sugerido" in disponiveis.columns else 0.0
+                    preco_venda = st.number_input("Preço por cesta (R$)", min_value=0.01, value=max(0.01, ultima_referencia), step=0.50)
+                    canal = st.selectbox("Canal de venda", ["Venda direta", "WhatsApp", "Entrega", "Revendedor", "Outro"])
+                    vendedor = st.text_input("Vendedor")
+                    zona = st.text_input("Bairro / local de entrega", value="Boa Vista")
+                    imposto = st.number_input("Imposto estimado (%)", min_value=0.0, max_value=100.0, value=0.0, step=0.5)
+                    salvar_venda = st.form_submit_button("Registrar venda")
+                if salvar_venda:
+                    try:
+                        registrar_venda(tipo_venda, quantidade_venda, preco_venda, canal, vendedor, zona, imposto)
+                        st.success("Venda registrada; saldo de cestas prontas atualizado.")
+                        st.rerun()
+                    except Exception as e:
+                        st.error(str(e))
+            else:
+                st.info("Ainda não há cestas montadas para venda.")
