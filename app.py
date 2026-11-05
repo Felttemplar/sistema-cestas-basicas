@@ -11,20 +11,36 @@ init_db()
 st.set_page_config(page_title="Cestas Bom Dia | Gestão", page_icon="🛒", layout="wide", initial_sidebar_state="expanded")
 st.markdown("""
 <style>
-    :root { --primary-color: #167d62; }
-    .stApp { background: #f5f7f8; }
-    [data-testid="stSidebar"] { background: #102c27; }
+    :root { color-scheme: light; }
+    .stApp, [data-testid="stAppViewContainer"], [data-testid="stMain"] { background: #f5f7f8 !important; }
+    [data-testid="stMain"] { color: #1f2937 !important; }
+    [data-testid="stMain"] h1, [data-testid="stMain"] h2, [data-testid="stMain"] h3,
+    [data-testid="stMain"] p, [data-testid="stMain"] label,
+    [data-testid="stMain"] [data-testid="stMarkdownContainer"],
+    [data-testid="stMain"] [data-testid="stWidgetLabel"],
+    [data-testid="stMain"] [data-testid="stCaptionContainer"] { color: #1f2937 !important; }
+    [data-testid="stSidebar"] { background: #102c27 !important; }
     [data-testid="stSidebar"] * { color: #eef7f2; }
     [data-testid="stSidebar"] [data-testid="stRadio"] label { padding: .45rem .55rem; border-radius: .45rem; }
     [data-testid="stSidebar"] [data-testid="stRadio"] label:hover { background: #1b433a; }
     .block-container { padding-top: 2rem; padding-bottom: 3rem; max-width: 1450px; }
-    h1, h2, h3 { color: #173c33; letter-spacing: -.02em; }
-    [data-testid="stMetric"] { background: #fff; border: 1px solid #e5ebe8; padding: 1rem 1.1rem; border-radius: .8rem; box-shadow: 0 2px 10px rgba(20,50,40,.04); }
-    [data-testid="stMetricLabel"] { color: #65756f; }
-    [data-testid="stMetricValue"] { color: #173c33; }
-    [data-testid="stForm"], [data-testid="stExpander"] { border-color: #e1e9e5; border-radius: .75rem; }
-    div.stButton > button[kind="primary"], div.stFormSubmitButton > button[kind="primary"] { background: #167d62; border-color: #167d62; }
-    div[data-testid="stDataFrame"] { border: 1px solid #e5ebe8; border-radius: .65rem; overflow: hidden; }
+    [data-testid="stMain"] h1, [data-testid="stMain"] h2, [data-testid="stMain"] h3 { color: #173c33 !important; letter-spacing: -.02em; }
+    [data-testid="stMain"] [data-testid="stMetric"] { background: #fff; border: 1px solid #e5ebe8; padding: 1rem 1.1rem; border-radius: .8rem; box-shadow: 0 2px 10px rgba(20,50,40,.04); }
+    [data-testid="stMain"] [data-testid="stMetricLabel"] { color: #52645d !important; }
+    [data-testid="stMain"] [data-testid="stMetricValue"] { color: #173c33 !important; }
+    [data-testid="stMain"] input, [data-testid="stMain"] textarea,
+    [data-testid="stMain"] [data-baseweb="select"] > div,
+    [data-testid="stMain"] [data-baseweb="input"] > div { background-color: #fff !important; color: #17211e !important; border-color: #aebdb6 !important; }
+    [data-testid="stMain"] input::placeholder, [data-testid="stMain"] textarea::placeholder { color: #66756f !important; opacity: 1; }
+    [data-testid="stMain"] [role="listbox"], [data-testid="stMain"] [role="option"],
+    [data-testid="stMain"] [data-baseweb="popover"] { background: #fff !important; color: #17211e !important; }
+    [data-testid="stMain"] [data-testid="stForm"], [data-testid="stMain"] [data-testid="stExpander"] { background: #fff; border-color: #d5e0da; border-radius: .75rem; }
+    [data-testid="stMain"] button { color: #173c33 !important; border-color: #aebdb6 !important; background: #fff !important; }
+    [data-testid="stMain"] button[kind="primary"] { color: #fff !important; background: #12664f !important; border-color: #12664f !important; }
+    [data-testid="stMain"] button:focus-visible, [data-testid="stMain"] input:focus,
+    [data-testid="stMain"] textarea:focus { outline: 3px solid #55a98b !important; outline-offset: 1px; }
+    [data-testid="stMain"] [data-testid="stDataFrame"] { background: #fff; border: 1px solid #d5e0da; border-radius: .65rem; overflow: hidden; }
+    [data-testid="stMain"] [data-testid="stAlert"] { color: #17211e; }
 </style>
 """, unsafe_allow_html=True)
 
