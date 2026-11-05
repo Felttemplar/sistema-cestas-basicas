@@ -8,8 +8,25 @@ from core.operations import (criar_fornecedor, registrar_cotacao, salvar_lote_co
 import io
 
 init_db()
-st.set_page_config(page_title="Cestas Bom Dia - Boa Vista", page_icon="🛒", layout="wide")
-st.title("🛒 Cestas Bom Dia - Gestão Operacional & Lotes")
+st.set_page_config(page_title="Cestas Bom Dia | Gestão", page_icon="🛒", layout="wide", initial_sidebar_state="expanded")
+st.markdown("""
+<style>
+    :root { --primary-color: #167d62; }
+    .stApp { background: #f5f7f8; }
+    [data-testid="stSidebar"] { background: #102c27; }
+    [data-testid="stSidebar"] * { color: #eef7f2; }
+    [data-testid="stSidebar"] [data-testid="stRadio"] label { padding: .45rem .55rem; border-radius: .45rem; }
+    [data-testid="stSidebar"] [data-testid="stRadio"] label:hover { background: #1b433a; }
+    .block-container { padding-top: 2rem; padding-bottom: 3rem; max-width: 1450px; }
+    h1, h2, h3 { color: #173c33; letter-spacing: -.02em; }
+    [data-testid="stMetric"] { background: #fff; border: 1px solid #e5ebe8; padding: 1rem 1.1rem; border-radius: .8rem; box-shadow: 0 2px 10px rgba(20,50,40,.04); }
+    [data-testid="stMetricLabel"] { color: #65756f; }
+    [data-testid="stMetricValue"] { color: #173c33; }
+    [data-testid="stForm"], [data-testid="stExpander"] { border-color: #e1e9e5; border-radius: .75rem; }
+    div.stButton > button[kind="primary"], div.stFormSubmitButton > button[kind="primary"] { background: #167d62; border-color: #167d62; }
+    div[data-testid="stDataFrame"] { border: 1px solid #e5ebe8; border-radius: .65rem; overflow: hidden; }
+</style>
+""", unsafe_allow_html=True)
 
 # Base inicial de cotação, com marca separada por loja para evitar comparar marcas diferentes como se fossem iguais.
 _colunas_cotacao = ["Nº", "Nome do Produto", "Unidade", "Marca Assaí", "Preço Assaí", "Marca Atacadão", "Preço Atacadão"]
@@ -73,19 +90,94 @@ for _linha in _linhas_cotacao.strip().splitlines():
     for _campo in ("Preço Assaí", "Preço Atacadão"):
         _registro[_campo] = float(_registro[_campo]) if _registro[_campo] else None
     dados_completos.append(_registro)
-menu = st.sidebar.radio("Navegabilidade:", [
-    "📥 Upload & Importação",
-    "📦 Cadastrar Produtos & Marcas",
-    "🏭 Fornecedores & Preços",
-    "📦 Estoque & Movimentações",
-    "📊 Cotações & Histórico",
-    "📦 Gestão de Lotes & Precificação",
-    "🧩 Montagem de Kits"
-])
 
-if menu == "📥 Upload & Importação":
-    st.header("📥 Importação Automatizada via Planilha Oficial")
-    st.markdown("Faça o upload da **Planilha Padrão Oficial** para atualizar produtos e cotações de forma limpa.")
+
+def _ir_para(pagina):
+    st.session_state["main_navigation"] = pagina
+
+
+with st.sidebar:
+    st.markdown("## 🛒 Cestas Bom Dia")
+    st.caption("OPERAÇÃO • BOA VISTA, RR")
+    st.markdown("---")
+    st.caption("SEU FLUXO DE TRABALHO")
+    menu = st.radio("Navegação", [
+        "Visão geral",
+        "Cotações e fornecedores",
+        "Importar planilha",
+        "Compras e lotes",
+        "Estoque",
+        "Cestas e vendas",
+        "Produtos",
+        "Histórico de preços",
+    ], label_visibility="collapsed", key="main_navigation")
+    st.markdown("---")
+    st.caption("Cote → compare → compre → monte → venda")
+
+if menu == "Visão geral":
+    st.title("Painel da operação")
+    st.caption("Acompanhe o caminho da cotação até as cestas disponíveis para venda.")
+    conn = get_connection()
+    resumo = pd.read_sql_query("""
+        SELECT
+          (SELECT COUNT(*) FROM produtos) AS produtos,
+          (SELECT COUNT(*) FROM fornecedores) AS fornecedores,
+          (SELECT COUNT(*) FROM cotacoes) AS cotacoes,
+          (SELECT COUNT(*) FROM lotes) AS lotes,
+          (SELECT COALESCE(SUM(CASE WHEN tipo IN ('ENTRADA','AJUSTE_ENTRADA') THEN quantidade ELSE -quantidade END),0) FROM movimentacoes_estoque) AS unidades_estoque,
+          (SELECT COALESCE(SUM(m.quantidade),0) FROM montagens_cesta m) AS cestas_montadas,
+          (SELECT COALESCE(SUM(v.quantidade_vendida),0) FROM vendas v) AS cestas_vendidas
+    """, conn).iloc[0]
+    df_alertas = pd.read_sql_query("""
+        SELECT p.nome AS produto, p.unidade,
+               COALESCE(SUM(CASE WHEN m.tipo IN ('ENTRADA','AJUSTE_ENTRADA') THEN m.quantidade ELSE -m.quantidade END),0) AS saldo
+        FROM produtos p LEFT JOIN movimentacoes_estoque m ON m.produto_id=p.id
+        GROUP BY p.id ORDER BY saldo, p.nome LIMIT 8
+    """, conn)
+    df_ultimas = pd.read_sql_query("""
+        SELECT f.nome AS fornecedor, COUNT(*) AS cotacoes, MAX(c.data_cotacao) AS atualizada
+        FROM cotacoes c JOIN fornecedores f ON f.id=c.fornecedor_id
+        GROUP BY f.id ORDER BY atualizada DESC, f.nome LIMIT 5
+    """, conn)
+    conn.close()
+    k1,k2,k3,k4 = st.columns(4)
+    k1.metric("Produtos cadastrados", f"{int(resumo['produtos']):,}".replace(',', '.'))
+    k2.metric("Fornecedores", int(resumo['fornecedores']))
+    k3.metric("Cotações registradas", f"{int(resumo['cotacoes']):,}".replace(',', '.'))
+    k4.metric("Lotes de compra", int(resumo['lotes']))
+    a1,a2,a3,a4 = st.columns(4)
+    with a1:
+        st.button("＋ Registrar cotação", on_click=_ir_para, args=("Cotações e fornecedores",), width="stretch")
+    with a2:
+        st.button("▦ Planejar compra", on_click=_ir_para, args=("Compras e lotes",), width="stretch")
+    with a3:
+        st.button("▤ Conferir estoque", on_click=_ir_para, args=("Estoque",), width="stretch")
+    with a4:
+        st.button("▣ Montar e vender", on_click=_ir_para, args=("Cestas e vendas",), type="primary", width="stretch")
+    st.markdown("### Produção e disponibilidade")
+    k5,k6,k7 = st.columns(3)
+    k5.metric("Unidades em estoque", f"{float(resumo['unidades_estoque']):,.0f}".replace(',', '.'))
+    k6.metric("Cestas montadas", int(resumo['cestas_montadas']))
+    k7.metric("Cestas vendidas", int(resumo['cestas_vendidas']))
+    esquerda,direita = st.columns([1.1,.9])
+    with esquerda:
+        st.markdown("### Comece por aqui")
+        st.markdown("""
+        - **1 · Cotar:** registre preços e marcas por loja ou importe a planilha.
+        - **2 · Planejar a compra:** compare as últimas ofertas e informe quanto comprar.
+        - **3 · Registrar o lote:** a compra entra no estoque com fornecedor, preço e quantidade.
+        - **4 · Montar cestas:** defina a composição e veja quantas unidades o estoque permite.
+        - **5 · Acompanhar vendas:** registre vendas e consulte o saldo pronto para revenda.
+        """)
+    with direita:
+        st.markdown("### Estoque mais baixo")
+        st.dataframe(df_alertas.rename(columns={"produto":"Produto","unidade":"Unidade","saldo":"Saldo"}), hide_index=True, width="stretch")
+        st.markdown("### Atividade de cotação")
+        st.dataframe(df_ultimas.rename(columns={"fornecedor":"Fornecedor","cotacoes":"Cotações","atualizada":"Última atualização"}), hide_index=True, width="stretch")
+
+elif menu == "Importar planilha":
+    st.title("Importar cotações")
+    st.caption("Traga os preços coletados para a mesma base de produtos e fornecedores.")
 
     # Gerador dinâmico de planilha em memória
     output = io.BytesIO()
@@ -108,7 +200,7 @@ if menu == "📥 Upload & Importação":
         try:
             df_up = pd.read_excel(uploaded_file, sheet_name=0, engine="openpyxl")
             st.success(f"Planilha carregada: {len(df_up)} linhas para conferência.")
-            st.dataframe(df_up.head(30), use_container_width=True)
+            st.dataframe(df_up.head(30), width="stretch")
             st.caption("A importação preserva cotações antigas. Se houver uma cotação do mesmo produto e loja na mesma data, ela será atualizada.")
             if st.button("🚀 Validar e salvar cotações", type="primary"):
                 resultado = importar_cotacoes(df_up)
@@ -118,8 +210,9 @@ if menu == "📥 Upload & Importação":
                 )
         except Exception as e:
             st.error(f"A planilha não foi importada: {e}")
-elif menu == "📦 Cadastrar Produtos & Marcas":
-    st.header("📦 Cadastro de Produtos e Marcas")
+elif menu == "Produtos":
+    st.title("Cadastro de produtos")
+    st.caption("Cadastre uma única vez cada item, com unidade e categoria padronizadas.")
     with st.form("form_prod"):
         n = st.text_input("Nome do Produto (Ex: Arroz 1kg, Feijão 1kg)")
         m = st.text_input("Marca principal (opcional; as marcas cotadas são registradas por loja)")
@@ -152,8 +245,8 @@ elif menu == "📦 Cadastrar Produtos & Marcas":
                     conn.close()
                     st.success("Produto cadastrado com sucesso.")
                     st.rerun()
-elif menu == "🏭 Fornecedores & Preços":
-    st.header("🏪 Mercados, distribuidoras e cotações")
+elif menu == "Cotações e fornecedores":
+    st.title("Cotações e fornecedores")
     st.caption("Cadastre fornecedores de Boa Vista e compare a última cotação registrada por produto e loja.")
 
     with st.expander("Cadastrar mercado ou distribuidora", expanded=False):
@@ -181,7 +274,7 @@ elif menu == "🏭 Fornecedores & Preços":
     df_produtos_cot = pd.read_sql_query("SELECT id, nome, marca, unidade FROM produtos ORDER BY nome, unidade", conn)
     conn.close()
     with st.expander(f"Fornecedores cadastrados ({len(df_fornecedores)})", expanded=False):
-        st.dataframe(df_fornecedores.drop(columns=["id"]), use_container_width=True)
+        st.dataframe(df_fornecedores.drop(columns=["id"]), width="stretch")
 
     if not df_produtos_cot.empty and not df_fornecedores.empty:
         with st.expander("Registrar uma cotação", expanded=True):
@@ -239,13 +332,13 @@ elif menu == "🏭 Fornecedores & Preços":
             [["produto", "unidade", "fornecedor", "marca_ofertada", "preco", "data_cotacao"]]
         )
         st.subheader("Melhor oferta mais recente por produto")
-        st.dataframe(df_menor, use_container_width=True)
+        st.dataframe(df_menor, width="stretch")
         st.subheader("Comparativo: última oferta de cada fornecedor")
-        st.dataframe(df_comparativo, use_container_width=True)
+        st.dataframe(df_comparativo, width="stretch")
     else:
         st.info("Registre ou importe cotações para ver a comparação entre fornecedores.")
-elif menu == "📦 Estoque & Movimentações":
-    st.header("📦 Estoque e Movimentações")
+elif menu == "Estoque":
+    st.title("Estoque")
     st.caption("O saldo abaixo é calculado pelas movimentações registradas desde a ativação deste controle. Confira a contagem física e lance o saldo inicial como entrada.")
     conn = get_connection()
     df_saldo = pd.read_sql_query("""
@@ -261,7 +354,7 @@ elif menu == "📦 Estoque & Movimentações":
     """, conn)
     df_produtos = pd.read_sql_query("SELECT id, nome, marca, unidade FROM produtos ORDER BY nome, marca", conn)
     conn.close()
-    st.dataframe(df_saldo.drop(columns=["produto_id"]), use_container_width=True)
+    st.dataframe(df_saldo.drop(columns=["produto_id"]), width="stretch")
 
     if not df_produtos.empty:
         with st.form("form_movimento_estoque"):
@@ -306,8 +399,8 @@ elif menu == "📦 Estoque & Movimentações":
                     st.rerun()
     else:
         st.info("Cadastre ou importe produtos para começar a controlar o estoque.")
-elif menu == "📊 Cotações & Histórico":
-    st.header("📊 Histórico Temporal de Preços")
+elif menu == "Histórico de preços":
+    st.title("Histórico de preços")
     conn = get_connection()
     df = pd.read_sql_query("""
         SELECT c.data_cotacao, (p.nome || ' - ' || p.marca) AS prod, f.nome AS atac, c.marca AS marca_ofertada, c.preco
@@ -318,12 +411,12 @@ elif menu == "📊 Cotações & Histórico":
     """, conn)
     conn.close()
     if not df.empty:
-        st.dataframe(df, use_container_width=True)
+        st.dataframe(df, width="stretch")
     else:
         st.info("Nenhuma cotação registada.")
 
-elif menu == "📦 Gestão de Lotes & Precificação":
-    st.header("📦 Lote de compra")
+elif menu == "Compras e lotes":
+    st.title("Planejar compras e registrar lote")
     st.markdown("Defina quanto comprar de cada produto. O sistema sugere a oferta mais barata entre as últimas cotações registradas e permite escolher outro fornecedor.")
     nome_lote_input = st.text_input("Identificação do lote", value=f"Lote - {datetime.now():%d/%m/%Y}")
     observacao_lote = st.text_input("Observação da compra (opcional)")
@@ -392,9 +485,10 @@ elif menu == "📦 Gestão de Lotes & Precificação":
                 st.error(str(e))
     else:
         st.warning("Não há cotações para sugerir compras. Cadastre fornecedores e cotações primeiro.")
-elif menu == "🧩 Montagem de Kits":
-    st.header("🧺 Receitas, montagem e venda de cestas")
-    tab_receitas, tab_montagem, tab_vendas = st.tabs(["Modelos e receitas", "Montar cestas", "Cestas prontas e vendas"])
+elif menu == "Cestas e vendas":
+    st.title("Cestas e vendas")
+    st.caption("Configure o conteúdo de cada modelo, monte a quantidade possível e acompanhe as vendas.")
+    tab_receitas, tab_montagem, tab_vendas = st.tabs(["Modelos e composição", "Montagem e preço", "Disponíveis e vendas"])
 
     conn = get_connection()
     df_tipos = pd.read_sql_query("SELECT id, nome, descricao FROM tipos_cesta ORDER BY nome", conn)
@@ -433,7 +527,7 @@ elif menu == "🧩 Montagem de Kits":
             if df_receita.empty:
                 st.info("Este modelo ainda não tem itens.")
             else:
-                st.dataframe(df_receita.drop(columns=["produto_id"]), use_container_width=True)
+                st.dataframe(df_receita.drop(columns=["produto_id"]), width="stretch")
 
             with st.form("form_item_receita"):
                 col_r1, col_r2 = st.columns([3, 1])
@@ -497,7 +591,7 @@ elif menu == "🧩 Montagem de Kits":
                     "nome": "Produto", "unidade": "Unidade", "por_cesta": "Qtd. por cesta",
                     "saldo": "Saldo atual", "custo_medio": "Custo médio unitário",
                 })
-                st.dataframe(df_plano[["Produto", "Unidade", "Qtd. por cesta", "Saldo atual", "Custo médio unitário"]], use_container_width=True)
+                st.dataframe(df_plano[["Produto", "Unidade", "Qtd. por cesta", "Saldo atual", "Custo médio unitário"]], width="stretch")
                 custos_pendentes = [i["nome"] for i in itens_plano if i["custo_medio"] is None]
                 if max_cestas <= 0:
                     st.warning("O estoque atual não permite montar uma cesta completa. Registre saldo inicial ou compre um lote.")
@@ -538,7 +632,7 @@ elif menu == "🧩 Montagem de Kits":
             df_resumo["Disponíveis"] = df_resumo["montadas"] - df_resumo["vendidas"]
             st.dataframe(df_resumo[["nome", "montadas", "vendidas", "Disponíveis"]].rename(columns={
                 "nome": "Modelo", "montadas": "Montadas", "vendidas": "Vendidas",
-            }), use_container_width=True)
+            }), width="stretch")
             disponiveis = df_resumo[df_resumo["Disponíveis"] > 0]
             if not disponiveis.empty:
                 with st.form("form_venda_cesta"):
