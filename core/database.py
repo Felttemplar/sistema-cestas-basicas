@@ -1,10 +1,12 @@
 import re
+import os
 import sqlite3
 import unicodedata
 from contextlib import closing
 from pathlib import Path
 
-DB_NAME = Path(__file__).resolve().parent.parent / "cesta_basica.db"
+_db_from_env = os.environ.get("CESTAS_DB_PATH")
+DB_NAME = Path(_db_from_env).expanduser().resolve() if _db_from_env else Path(__file__).resolve().parent.parent / "cesta_basica.db"
 
 
 def normalizar_fornecedor(valor):
@@ -39,9 +41,13 @@ def init_db():
                 nome TEXT NOT NULL,
                 marca TEXT NOT NULL DEFAULT 'VARIÁVEL',
                 unidade TEXT NOT NULL,
-                grupo_equivalencia TEXT
+                grupo_equivalencia TEXT,
+                conteudo_embalagem REAL,
+                unidade_conteudo TEXT
             )
         """)
+        _garantir_coluna(cursor, "produtos", "conteudo_embalagem", "REAL")
+        _garantir_coluna(cursor, "produtos", "unidade_conteudo", "TEXT")
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS fornecedores (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -94,6 +100,7 @@ def init_db():
                 margem_lucro_perc REAL NOT NULL DEFAULT 25,
                 preco_venda_calculado REAL NOT NULL DEFAULT 0,
                 ativo INTEGER NOT NULL DEFAULT 1,
+                chave_requisicao TEXT,
                 FOREIGN KEY(fornecedor_id) REFERENCES fornecedores(id)
             )
         """)
@@ -107,6 +114,7 @@ def init_db():
             ("margem_lucro_perc", "REAL NOT NULL DEFAULT 25"),
             ("preco_venda_calculado", "REAL NOT NULL DEFAULT 0"),
             ("ativo", "INTEGER NOT NULL DEFAULT 1"),
+            ("chave_requisicao", "TEXT"),
         ):
             _garantir_coluna(cursor, "lotes", coluna, definicao)
         cursor.execute("UPDATE lotes SET nome_lote = numero_lote WHERE nome_lote IS NULL AND numero_lote IS NOT NULL")
@@ -227,6 +235,7 @@ def init_db():
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_cotacoes_produto_preco ON cotacoes(produto_id, preco, data_cotacao)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_cotacoes_fornecedor_data ON cotacoes(fornecedor_id, data_cotacao)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_movimentos_produto_data ON movimentacoes_estoque(produto_id, data_hora)")
+        cursor.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_lotes_chave_requisicao ON lotes(chave_requisicao) WHERE chave_requisicao IS NOT NULL")
 
         if cursor.execute("SELECT COUNT(*) FROM tipos_cesta").fetchone()[0] == 0:
             cursor.executemany(

@@ -1,5 +1,8 @@
 from contextlib import closing
 from datetime import date
+import re
+import sqlite3
+from uuid import uuid4
 
 from core.database import get_connection
 
@@ -46,18 +49,51 @@ def registrar_cotacao(produto_id, fornecedor_id, preco, data_cotacao, marca=None
         return cur.lastrowid, "registrada"
 
 
-def salvar_lote_compra(nome, itens, observacao=None):
+def salvar_lote_compra(nome, itens, observacao=None, chave_requisicao=None):
     itens_validos = [i for i in itens if float(i["quantidade"]) > 0]
     if not itens_validos:
         raise ValueError("Selecione ao menos um produto e informe a quantidade comprada.")
+    for item in itens_validos:
+        if float(item["preco_unitario"]) <= 0:
+            raise ValueError("O preço unitário de cada item do lote deve ser maior que zero.")
     custo_total = sum(float(i["quantidade"]) * float(i["preco_unitario"]) for i in itens_validos)
     nome = nome.strip() or f"Lote {date.today():%d/%m/%Y}"
-    numero = f"LOTE-{date.today():%Y%m%d}-{__import__('uuid').uuid4().hex[:8].upper()}"
+    chave_requisicao = chave_requisicao or uuid4().hex
     with closing(get_connection()) as conn, conn:
-        cur = conn.execute(
-            "INSERT INTO lotes (numero_lote, nome_lote, data_compra, observacao, custo_total, custo_total_insumos) VALUES (?, ?, ?, ?, ?, ?)",
-            (numero, nome, date.today().isoformat(), observacao.strip() or None if observacao else None, custo_total, custo_total),
-        )
+        existente = conn.execute(
+            "SELECT id, nome_lote, custo_total FROM lotes WHERE chave_requisicao = ?",
+            (chave_requisicao,),
+        ).fetchone()
+        if existente:
+            quantidade_itens = conn.execute(
+                "SELECT COUNT(*) FROM itens_lote WHERE lote_id = ?", (existente["id"],)
+            ).fetchone()[0]
+            return {
+                "id": existente["id"], "nome": existente["nome_lote"],
+                "custo_total": existente["custo_total"], "itens": quantidade_itens,
+                "ja_existia": True,
+            }
+        numero = f"LOTE-{date.today():%Y%m%d}-{uuid4().hex[:8].upper()}"
+        try:
+            cur = conn.execute(
+                "INSERT INTO lotes (numero_lote, nome_lote, data_compra, observacao, custo_total, custo_total_insumos, chave_requisicao) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                (numero, nome, date.today().isoformat(), observacao.strip() or None if observacao else None, custo_total, custo_total, chave_requisicao),
+            )
+        except sqlite3.IntegrityError:
+            existente = conn.execute(
+                "SELECT id, nome_lote, custo_total FROM lotes WHERE chave_requisicao = ?",
+                (chave_requisicao,),
+            ).fetchone()
+            if not existente:
+                raise
+            quantidade_itens = conn.execute(
+                "SELECT COUNT(*) FROM itens_lote WHERE lote_id = ?", (existente["id"],)
+            ).fetchone()[0]
+            return {
+                "id": existente["id"], "nome": existente["nome_lote"],
+                "custo_total": existente["custo_total"], "itens": quantidade_itens,
+                "ja_existia": True,
+            }
         lote_id = cur.lastrowid
         for item in itens_validos:
             produto_id = int(item["produto_id"])
@@ -78,7 +114,58 @@ def salvar_lote_compra(nome, itens, observacao=None):
                 "INSERT INTO movimentacoes_estoque (produto_id, lote_id, tipo, quantidade, custo_unitario, observacao) VALUES (?, ?, 'ENTRADA', ?, ?, ?)",
                 (produto_id, lote_id, quantidade, preco, f"Compra: {nome}"),
             )
-    return {"id": lote_id, "nome": nome, "custo_total": custo_total, "itens": len(itens_validos)}
+    return {"id": lote_id, "nome": nome, "custo_total": custo_total, "itens": len(itens_validos), "ja_existia": False}
+
+
+def obter_detalhes_lote(lote_id):
+    with closing(get_connection()) as conn:
+        lote = conn.execute("""
+            SELECT id, numero_lote, nome_lote, data_compra, observacao, custo_total
+            FROM lotes WHERE id = ?
+        """, (lote_id,)).fetchone()
+        if not lote:
+            return None, []
+        itens = conn.execute("""
+            SELECT p.nome AS produto, p.unidade, p.conteudo_embalagem, p.unidade_conteudo,
+                   i.quantidade, i.preco_unitario, i.subtotal, f.nome AS fornecedor,
+                   c.data_cotacao
+            FROM itens_lote i
+            JOIN produtos p ON p.id = i.produto_id
+            LEFT JOIN fornecedores f ON f.id = i.fornecedor_id
+            LEFT JOIN cotacoes c ON c.id = i.cotacao_id
+            WHERE i.lote_id = ? ORDER BY p.nome
+        """, (lote_id,)).fetchall()
+    return dict(lote), [dict(item) for item in itens]
+
+
+def obter_historico_lotes(limite=50):
+    with closing(get_connection()) as conn:
+        return conn.execute("""
+            SELECT l.id, l.numero_lote, l.nome_lote, l.data_compra, l.custo_total,
+                   COUNT(i.id) AS quantidade_itens
+            FROM lotes l LEFT JOIN itens_lote i ON i.lote_id = l.id
+            GROUP BY l.id ORDER BY l.id DESC LIMIT ?
+        """, (int(limite),)).fetchall()
+
+
+def obter_status_receita(tipo_cesta_id):
+    with closing(get_connection()) as conn:
+        tipo = conn.execute("SELECT nome, descricao FROM tipos_cesta WHERE id = ?", (tipo_cesta_id,)).fetchone()
+        cadastrados = conn.execute(
+            "SELECT COUNT(*) FROM composicao_cesta WHERE tipo_cesta_id = ?", (tipo_cesta_id,)
+        ).fetchone()[0]
+    if not tipo:
+        return {"itens_cadastrados": 0, "itens_minimos": None, "itens_faltando": None, "completa": False}
+    rotulo = f"{tipo['nome']} {tipo['descricao'] or ''}"
+    faixa = re.search(r"(\d{1,3})\s*[-–]\s*(\d{1,3})\s*(?:ITENS?)?", rotulo, re.IGNORECASE)
+    minimo = int(faixa.group(1)) if faixa else None
+    faltando = max(0, minimo - cadastrados) if minimo is not None else 0
+    return {
+        "itens_cadastrados": cadastrados,
+        "itens_minimos": minimo,
+        "itens_faltando": faltando,
+        "completa": cadastrados > 0 and (minimo is None or cadastrados >= minimo),
+    }
 
 
 def salvar_receita(tipo_cesta_id, itens):
@@ -106,10 +193,19 @@ def montar_cestas(tipo_cesta_id, quantidade_cestas, frete_total=0, embalagem_por
         raise ValueError("Informe uma quantidade de cestas maior que zero.")
     if margem_bruta < 0 or margem_bruta >= 100:
         raise ValueError("A margem bruta deve estar entre 0% e menos de 100%.")
+    status_receita = obter_status_receita(tipo_cesta_id)
+    if not status_receita["completa"]:
+        if status_receita["itens_minimos"] is not None:
+            raise ValueError(
+                f"Receita incompleta: {status_receita['itens_cadastrados']} de "
+                f"{status_receita['itens_minimos']} itens mínimos. Complete a composição antes de montar."
+            )
+        raise ValueError("Cadastre e confirme ao menos um item na receita antes de montar.")
 
     with closing(get_connection()) as conn, conn:
         receita = conn.execute("""
             SELECT cc.produto_id, cc.quantidade AS por_cesta, p.nome, p.unidade,
+                   p.conteudo_embalagem, p.unidade_conteudo,
                    COALESCE(SUM(CASE WHEN m.tipo IN ('ENTRADA','AJUSTE_ENTRADA') THEN m.quantidade
                                      WHEN m.tipo IN ('SAIDA','AJUSTE_SAIDA') THEN -m.quantidade ELSE 0 END),0) AS saldo,
                    SUM(CASE WHEN m.tipo IN ('ENTRADA','AJUSTE_ENTRADA') AND m.custo_unitario IS NOT NULL
@@ -120,7 +216,7 @@ def montar_cestas(tipo_cesta_id, quantidade_cestas, frete_total=0, embalagem_por
             JOIN produtos p ON p.id = cc.produto_id
             LEFT JOIN movimentacoes_estoque m ON m.produto_id = p.id
             WHERE cc.tipo_cesta_id = ?
-            GROUP BY cc.produto_id, cc.quantidade, p.nome, p.unidade
+            GROUP BY cc.produto_id, cc.quantidade, p.nome, p.unidade, p.conteudo_embalagem, p.unidade_conteudo
             ORDER BY p.nome
         """, (tipo_cesta_id,)).fetchall()
         if not receita:
@@ -175,6 +271,7 @@ def obter_planejamento_montagem(tipo_cesta_id):
     with closing(get_connection()) as conn:
         itens = conn.execute("""
             SELECT cc.produto_id, cc.quantidade AS por_cesta, p.nome, p.unidade,
+                   p.conteudo_embalagem, p.unidade_conteudo,
                    COALESCE(SUM(CASE WHEN m.tipo IN ('ENTRADA','AJUSTE_ENTRADA') THEN m.quantidade
                                      WHEN m.tipo IN ('SAIDA','AJUSTE_SAIDA') THEN -m.quantidade ELSE 0 END),0) AS saldo,
                    SUM(CASE WHEN m.tipo IN ('ENTRADA','AJUSTE_ENTRADA') AND m.custo_unitario IS NOT NULL
@@ -185,7 +282,7 @@ def obter_planejamento_montagem(tipo_cesta_id):
             JOIN produtos p ON p.id = cc.produto_id
             LEFT JOIN movimentacoes_estoque m ON m.produto_id = p.id
             WHERE cc.tipo_cesta_id = ?
-            GROUP BY cc.produto_id, cc.quantidade, p.nome, p.unidade
+            GROUP BY cc.produto_id, cc.quantidade, p.nome, p.unidade, p.conteudo_embalagem, p.unidade_conteudo
             ORDER BY p.nome
         """, (tipo_cesta_id,)).fetchall()
     max_cestas = min((int(i["saldo"] // i["por_cesta"]) for i in itens), default=0)
